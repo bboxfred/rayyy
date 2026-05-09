@@ -57,6 +57,14 @@ let isTalking = false;
 let nextStartTime = 0;
 let activeSources = []; // BufferSourceNodes currently scheduled — flushed on barge-in
 
+// Phase 7 — voice provider state.
+// "gemini": Gemini Live native audio (Aoede). audio modality from the model.
+// "elevenlabs": Gemini returns TEXT, phone POSTs to /tts/elevenlabs for MP3 playback.
+let currentProvider = "gemini";
+let pendingProviderSwitch = null; // queued switch — performed after current turn audio drains
+let pendingTextThisTurn = ""; // accumulated text chunks in elevenlabs mode (per turn)
+let elevenlabsAudioUrl = null; // current blob URL for cleanup
+
 // camera state
 let camStream = null;
 let camVideo = null; // off-DOM <video>, painted to canvas via rAF
@@ -88,6 +96,16 @@ function inferRelayBase() {
 
 function setStatus(text) {
   statusEl.textContent = text;
+}
+
+function updateVoiceTag(health) {
+  if (!health) return;
+  if (currentProvider === "elevenlabs") {
+    const voice = health.providers?.elevenlabs?.voice_id?.slice(0, 6) || "ElevenLabs";
+    voiceTag.textContent = `Voice: ElevenLabs · ${health.providers?.elevenlabs?.model_id || ""}`;
+  } else {
+    voiceTag.textContent = `Voice: ${health.voice} · ${health.model}`;
+  }
 }
 
 function isConnecting() {
@@ -174,6 +192,89 @@ function flushAudio(_reason = "interrupt") {
   }
   activeSources = [];
   if (outCtx) nextStartTime = outCtx.currentTime + SCHEDULE_LOOKAHEAD_S;
+  // Also stop any in-flight ElevenLabs MP3 playback.
+  try {
+    audioOut.pause();
+    audioOut.removeAttribute("src");
+    audioOut.load();
+  } catch (_) {}
+  if (elevenlabsAudioUrl) {
+    URL.revokeObjectURL(elevenlabsAudioUrl);
+    elevenlabsAudioUrl = null;
+  }
+  // Restore the AudioContext stream binding for the gemini path.
+  if (outDest) audioOut.srcObject = outDest.stream;
+}
+
+// Wait until the current audio output has fully drained. For gemini provider
+// that means activeSources is empty; for elevenlabs it means audioOut paused.
+function waitForAudioToDrain(timeoutMs = 5000) {
+  return new Promise((resolve) => {
+    const start = performance.now();
+    (function tick() {
+      const drained =
+        activeSources.length === 0 &&
+        (audioOut.paused || audioOut.ended || !audioOut.src);
+      if (drained) return resolve(true);
+      if (performance.now() - start > timeoutMs) return resolve(false);
+      setTimeout(tick, 120);
+    })();
+  });
+}
+
+// Switch voice provider mid-conversation. Tears down the current WS,
+// flips currentProvider, and reopens with the new modality.
+async function switchProvider(provider) {
+  currentProvider = provider;
+  // Reset audio routing depending on provider.
+  if (provider === "elevenlabs") {
+    // Detach the AudioContext stream so we can play MP3 blob URLs directly.
+    audioOut.srcObject = null;
+  } else {
+    if (outDest) audioOut.srcObject = outDest.stream;
+  }
+  setStatus(`Switching to ${provider}…`);
+  teardownWs("provider switch");
+  // Refresh the on-screen voice tag so the user can see the change.
+  try {
+    const r = await fetch(RELAY_BASE + "/health", { cache: "no-store" });
+    if (r.ok) updateVoiceTag(await r.json());
+  } catch (_) {}
+  // Small gap, then reopen.
+  await new Promise((r) => setTimeout(r, 250));
+  openSession();
+}
+
+// ElevenLabs path: POST the full per-turn text to /tts/elevenlabs, get back
+// a streaming MP3, play via the <audio> element.
+async function synthesizeWithElevenLabs(text) {
+  setStatus("Rayyy is thinking…");
+  try {
+    const r = await fetch(RELAY_BASE + "/tts/elevenlabs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!r.ok) {
+      setStatus("ElevenLabs error: " + r.status);
+      return;
+    }
+    const blob = await r.blob();
+    if (elevenlabsAudioUrl) URL.revokeObjectURL(elevenlabsAudioUrl);
+    elevenlabsAudioUrl = URL.createObjectURL(blob);
+    audioOut.srcObject = null;
+    audioOut.src = elevenlabsAudioUrl;
+    audioOut.playbackRate = 1.0;
+    try {
+      await audioOut.play();
+    } catch (_) {}
+    setStatus("Rayyy is speaking…");
+    audioOut.onended = () => {
+      if (isOpen()) setStatus("Listening…");
+    };
+  } catch (err) {
+    setStatus("ElevenLabs error: " + (err && err.message));
+  }
 }
 
 // Decode base64 PCM16, create AudioBuffer at the SOURCE rate (e.g. 24kHz),
@@ -478,13 +579,21 @@ async function dispatchTool(name, _args) {
       };
     }
     case "set_voice_provider": {
-      // Phase-6 stub. Honest "not implemented" so Rayyy tells the user the truth
-      // instead of faking compliance with the same Charon voice.
-      emitRoom({ kind: "voice_switch", provider: _args && _args.provider });
-      return {
-        ok: false,
-        message: "voice_switching_not_implemented_yet",
-      };
+      // Phase 7 — REAL switch. Schedule the swap to happen after the current
+      // turn's acknowledgement audio finishes playing. Then teardownWs() and
+      // reopen with ?provider=<provider>. In elevenlabs mode the Worker sets
+      // up Gemini with TEXT modality; the phone synthesizes via /tts/elevenlabs.
+      const provider = ((_args && _args.provider) || "").toLowerCase();
+      if (provider !== "elevenlabs" && provider !== "gemini") {
+        emitRoom({ kind: "voice_switch", provider, ok: false });
+        return { ok: false, message: "unknown provider" };
+      }
+      if (provider === currentProvider) {
+        return { ok: true, provider, message: "already on " + provider };
+      }
+      pendingProviderSwitch = provider;
+      emitRoom({ kind: "voice_switch", provider, ok: true });
+      return { ok: true, provider, message: "switching to " + provider };
     }
     default:
       return { ok: false, error: "tool_not_implemented" };
@@ -544,7 +653,9 @@ function openSession() {
   if (!roomWs || roomWs.readyState !== WebSocket.OPEN) openRoom();
 
   const t0 = performance.now();
-  ws = new WebSocket(WS_URL);
+  // Append ?provider=<provider> so the Worker sets up the right modality.
+  const wsUrl = `${WS_URL}?provider=${encodeURIComponent(currentProvider)}`;
+  ws = new WebSocket(wsUrl);
 
   ws.addEventListener("open", async () => {
     const dt = Math.round(performance.now() - t0);
@@ -614,14 +725,23 @@ function handleServerMessage(data) {
   // streams at once (which sounds like pitch wobble + speed wandering).
   if (msg?.serverContent?.interrupted) {
     flushAudio("server interrupt");
+    pendingTextThisTurn = ""; // also drop any partial text in elevenlabs mode
     setStatus("Listening…");
   }
 
-  // serverContent.modelTurn.parts[].inlineData.{mimeType, data}
+  // serverContent.modelTurn.parts[]:
+  //   gemini provider: parts[].inlineData.{mimeType, data}     (audio)
+  //   elevenlabs provider: parts[].text                        (text we synth)
   const parts = msg?.serverContent?.modelTurn?.parts;
   if (Array.isArray(parts)) {
     let gotAudio = false;
+    let gotText = false;
     for (const part of parts) {
+      if (currentProvider === "elevenlabs" && typeof part.text === "string") {
+        pendingTextThisTurn += part.text;
+        gotText = true;
+        continue;
+      }
       const inline = part.inlineData;
       if (inline && typeof inline.data === "string") {
         const rate = parseRateFromMime(inline.mimeType);
@@ -629,13 +749,13 @@ function handleServerMessage(data) {
         gotAudio = true;
       }
     }
-    if (gotAudio && statusEl.textContent !== "Rayyy is speaking…") {
-      // Status flips to "thinking" briefly then "speaking" once audio is queued —
-      // matches the 700ms pre-buffer wait so the user understands the pause.
+    if ((gotAudio || gotText) && statusEl.textContent !== "Rayyy is speaking…") {
       setStatus("Rayyy is thinking…");
-      setTimeout(() => {
-        if (isOpen()) setStatus("Rayyy is speaking…");
-      }, SCHEDULE_LOOKAHEAD_S * 1000);
+      if (currentProvider === "gemini") {
+        setTimeout(() => {
+          if (isOpen()) setStatus("Rayyy is speaking…");
+        }, SCHEDULE_LOOKAHEAD_S * 1000);
+      }
     }
   }
 
@@ -650,10 +770,29 @@ function handleServerMessage(data) {
         emitRoom({ kind: "scene_described" });
       }
     }
-    // Wait for the queued audio to finish, then go back to listening.
-    setTimeout(() => {
-      if (isOpen() && activeSources.length === 0) setStatus("Listening…");
-    }, 200);
+
+    // ElevenLabs path: the full reply text has been collected for this turn —
+    // send it off for synthesis and play.
+    if (currentProvider === "elevenlabs" && pendingTextThisTurn.trim()) {
+      const text = pendingTextThisTurn.trim();
+      pendingTextThisTurn = "";
+      synthesizeWithElevenLabs(text);
+    }
+
+    // If a voice-provider switch is queued, perform it once the current
+    // turn's audio has drained. We let the in-current-voice acknowledgement
+    // ("OK, switching now") play out before tearing down the WS.
+    if (pendingProviderSwitch) {
+      const target = pendingProviderSwitch;
+      pendingProviderSwitch = null;
+      waitForAudioToDrain().then(() => switchProvider(target));
+    } else {
+      // Wait for the queued audio to finish, then go back to listening.
+      setTimeout(() => {
+        if (isOpen() && activeSources.length === 0 && !audioOut.duration)
+          setStatus("Listening…");
+      }, 200);
+    }
   }
 
   // Input transcription is used LOCALLY only — never forwarded.
@@ -705,11 +844,11 @@ async function onStart() {
 
   await unlockAudio();
 
-  // Health check — confirms the relay is reachable and shows the locked voice.
+  // Health check — confirms the relay is reachable and shows the active voice.
   try {
     const r = await fetch(RELAY_BASE + "/health", { cache: "no-store" });
     const j = await r.json();
-    voiceTag.textContent = `Voice: ${j.voice} · ${j.model}`;
+    updateVoiceTag(j);
   } catch (_) {
     voiceTag.textContent = "Voice: relay unreachable";
   }

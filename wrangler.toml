@@ -9,6 +9,10 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 GEMINI_MODEL = "gemini-3.1-flash-live-preview"
 GEMINI_VOICE = "Aoede"
+# ElevenLabs voice swap (Phase 7). API key set as a secret:
+#   echo "sk_..." | wrangler secret put ELEVENLABS_API_KEY
+ELEVENLABS_VOICE_ID = "rOVKXrU0YcQMzmTNwaDq"
+ELEVENLABS_MODEL_ID = "eleven_flash_v2_5"
 
 # Durable Object: family-dashboard pub/sub room.
 # Free plan REQUIRES new_sqlite_classes (not new_classes) — the regular

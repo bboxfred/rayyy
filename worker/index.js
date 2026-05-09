@@ -60,10 +60,12 @@ Use these facts naturally — never recite them. Reference them only when releva
    not the whole article.
 
 6. VOICE SWITCH — "switch to ElevenLabs / use the other voice / change your voice":
-   Call set_voice_provider. If it returns not-implemented, tell her honestly:
-   "Sorry Auntie Mei, I can't switch voices yet — coming soon." Never fake the switch.
-   Voice CHARACTER is locked at session setup; you can adjust STYLE (more formal,
-   less Singlish, slower pace) within the session — that's allowed.
+   Call set_voice_provider with the requested provider name ("elevenlabs" or "gemini").
+   If it returns ok:true, briefly acknowledge ("OK, switching now") in your CURRENT
+   voice — the new voice takes over on the next reply. If it returns ok:false,
+   tell her honestly. Never claim the switch happened if the tool said no.
+   Voice CHARACTER stays locked between switches; you can adjust STYLE (more
+   formal, slower pace) within the session in either provider.
 
 7. CASUAL CONVERSATION — greetings, small talk, gratitude, feelings:
    Match her register. Reference what you know about her life when it fits.
@@ -157,7 +159,7 @@ function corsHeaders(origin) {
   const allow = ALLOWED_ORIGINS.has(origin) ? origin : "*";
   return {
     "Access-Control-Allow-Origin": allow,
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "86400",
   };
@@ -178,7 +180,15 @@ export default {
           ok: true,
           model: env.GEMINI_MODEL,
           voice: env.GEMINI_VOICE,
-          phase: 2,
+          providers: {
+            gemini: { available: true, voice: env.GEMINI_VOICE },
+            elevenlabs: {
+              available: !!env.ELEVENLABS_API_KEY,
+              voice_id: env.ELEVENLABS_VOICE_ID,
+              model_id: env.ELEVENLABS_MODEL_ID,
+            },
+          },
+          phase: 7,
         }),
         {
           headers: {
@@ -189,6 +199,58 @@ export default {
       );
     }
 
+    if (url.pathname === "/tts/elevenlabs" && request.method === "POST") {
+      if (!env.ELEVENLABS_API_KEY) {
+        return new Response("ELEVENLABS_API_KEY not configured", { status: 500 });
+      }
+      let body;
+      try {
+        body = await request.json();
+      } catch (_) {
+        return new Response("invalid json", { status: 400 });
+      }
+      const text = (body && body.text) || "";
+      if (!text.trim()) return new Response("empty text", { status: 400 });
+      const voiceId = env.ELEVENLABS_VOICE_ID;
+      const modelId = env.ELEVENLABS_MODEL_ID || "eleven_flash_v2_5";
+      const upstream = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=2&output_format=mp3_44100_128`,
+        {
+          method: "POST",
+          headers: {
+            "xi-api-key": env.ELEVENLABS_API_KEY,
+            "Content-Type": "application/json",
+            Accept: "audio/mpeg",
+          },
+          body: JSON.stringify({
+            text,
+            model_id: modelId,
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.75,
+              style: 0.0,
+              use_speaker_boost: true,
+            },
+          }),
+        }
+      );
+      if (!upstream.ok) {
+        const t = await upstream.text().catch(() => "");
+        return new Response("elevenlabs error: " + upstream.status + " " + t, {
+          status: 502,
+          headers: corsHeaders(origin),
+        });
+      }
+      return new Response(upstream.body, {
+        status: 200,
+        headers: {
+          "Content-Type": "audio/mpeg",
+          "Cache-Control": "no-store",
+          ...corsHeaders(origin),
+        },
+      });
+    }
+
     if (url.pathname === "/ws") {
       if (request.headers.get("Upgrade") !== "websocket") {
         return new Response("expected websocket upgrade", { status: 426 });
@@ -196,7 +258,8 @@ export default {
       if (!env.GEMINI_API_KEY) {
         return new Response("GEMINI_API_KEY not configured", { status: 500 });
       }
-      return handleGeminiProxy(request, env);
+      const provider = (url.searchParams.get("provider") || "gemini").toLowerCase();
+      return handleGeminiProxy(request, env, provider);
     }
 
     if (url.pathname === "/ws/auntie-mei") {
@@ -214,7 +277,7 @@ export default {
   },
 };
 
-async function handleGeminiProxy(request, env) {
+async function handleGeminiProxy(request, env, provider = "gemini") {
   // Browser <-> client side of pair
   const pair = new WebSocketPair();
   const client = pair[0];
@@ -245,19 +308,26 @@ async function handleGeminiProxy(request, env) {
   }
 
   // Send setup message FIRST (Gemini Live requires this before any input).
+  // For provider=elevenlabs, request TEXT modality from Gemini and let the
+  // phone POST text to /tts/elevenlabs for audio. For provider=gemini (default),
+  // request AUDIO modality with Charon/Aoede locked at session setup.
   // speechConfig MUST live inside generationConfig — top-level placement
   // returns 1007 "Unknown name speechConfig at setup".
-  const setupMessage = {
-    setup: {
-      model: `models/${env.GEMINI_MODEL}`,
-      generationConfig: {
+  const isElevenLabs = provider === "elevenlabs";
+  const generationConfig = isElevenLabs
+    ? { responseModalities: ["TEXT"] }
+    : {
         responseModalities: ["AUDIO"],
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: { voiceName: env.GEMINI_VOICE },
           },
         },
-      },
+      };
+  const setupMessage = {
+    setup: {
+      model: `models/${env.GEMINI_MODEL}`,
+      generationConfig,
       systemInstruction: {
         parts: [{ text: SYSTEM_INSTRUCTION }],
       },

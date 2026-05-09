@@ -105,6 +105,14 @@
         100% { box-shadow: 0 0 0 8px rgba(46, 170, 110, 0); }
       }
       .pill.demo .dot { background: var(--amber); }
+      .pill.flashing {
+        animation: voice-flash 1.8s ease-out;
+      }
+      @keyframes voice-flash {
+        0% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.55); transform: scale(1); }
+        20% { box-shadow: 0 0 0 14px rgba(255, 107, 53, 0); transform: scale(1.06); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0); transform: scale(1); }
+      }
       .ring {
         position: relative;
         display: inline-block;
@@ -806,12 +814,32 @@
               "amber"
             );
             break;
-          case "voice_switch":
+          case "voice_switch": {
+            const provider = (evt.provider || "").toLowerCase();
+            const ok = evt.ok !== false;
+            const pill = document.getElementById("voice-pill");
+            if (pill && ok && provider) {
+              pill.classList.remove("flashing");
+              // Force reflow so the animation restarts cleanly on consecutive switches.
+              void pill.offsetWidth;
+              pill.classList.add("flashing");
+              const label =
+                provider === "elevenlabs"
+                  ? "ElevenLabs"
+                  : provider === "gemini"
+                  ? "Aoede"
+                  : provider;
+              pill.innerHTML =
+                `<span class="dot" style="background:var(--warm)"></span>Voice: ${label}`;
+            }
             pushMoment(
-              "She asked to change Rayyy's voice. Rayyy explained it's not available yet.",
-              "sky"
+              ok
+                ? `She asked to switch voice. Rayyy is moving to ${provider}.`
+                : "She asked to change Rayyy's voice — that provider isn't available.",
+              ok ? "warm" : "sky"
             );
             break;
+          }
           case "time_check":
             pushMoment("She asked the time.", "mint");
             break;
