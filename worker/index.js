@@ -308,26 +308,27 @@ async function handleGeminiProxy(request, env, provider = "gemini") {
   }
 
   // Send setup message FIRST (Gemini Live requires this before any input).
-  // For provider=elevenlabs, request TEXT modality from Gemini and let the
-  // phone POST text to /tts/elevenlabs for audio. For provider=gemini (default),
-  // request AUDIO modality with Charon/Aoede locked at session setup.
+  //
+  // For both providers we keep responseModalities: ["AUDIO"] because the
+  // 3.1 Flash Live preview rejects TEXT-only output with a 1011 internal
+  // error. For provider=elevenlabs we ALSO turn on outputAudioTranscription
+  // so we get the spoken text alongside the audio — the phone discards the
+  // audio chunks and feeds the transcription to /tts/elevenlabs.
+  //
   // speechConfig MUST live inside generationConfig — top-level placement
   // returns 1007 "Unknown name speechConfig at setup".
   const isElevenLabs = provider === "elevenlabs";
-  const generationConfig = isElevenLabs
-    ? { responseModalities: ["TEXT"] }
-    : {
+  const setupMessage = {
+    setup: {
+      model: `models/${env.GEMINI_MODEL}`,
+      generationConfig: {
         responseModalities: ["AUDIO"],
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: { voiceName: env.GEMINI_VOICE },
           },
         },
-      };
-  const setupMessage = {
-    setup: {
-      model: `models/${env.GEMINI_MODEL}`,
-      generationConfig,
+      },
       systemInstruction: {
         parts: [{ text: SYSTEM_INSTRUCTION }],
       },
@@ -340,6 +341,9 @@ async function handleGeminiProxy(request, env, provider = "gemini") {
       // The phone uses this LOCALLY for intent matching (e.g. "where am I"
       // -> dashboard location pulse). The phrase is never forwarded to the room.
       inputAudioTranscription: {},
+      // Elevenlabs path: also stream output transcription so we have text
+      // to send to /tts/elevenlabs. Audio is discarded on the phone side.
+      ...(isElevenLabs ? { outputAudioTranscription: {} } : {}),
     },
   };
   upstream.send(JSON.stringify(setupMessage));

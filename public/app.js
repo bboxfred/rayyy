@@ -730,18 +730,14 @@ function handleServerMessage(data) {
   }
 
   // serverContent.modelTurn.parts[]:
-  //   gemini provider: parts[].inlineData.{mimeType, data}     (audio)
-  //   elevenlabs provider: parts[].text                        (text we synth)
+  //   gemini provider:    parts[].inlineData.{mimeType, data}  (audio — play)
+  //   elevenlabs provider: same audio shape, BUT we discard it. The actual
+  //                        text we synthesize comes from
+  //                        serverContent.outputTranscription.text further down.
   const parts = msg?.serverContent?.modelTurn?.parts;
-  if (Array.isArray(parts)) {
-    let gotAudio = false;
-    let gotText = false;
+  let gotAudio = false;
+  if (Array.isArray(parts) && currentProvider === "gemini") {
     for (const part of parts) {
-      if (currentProvider === "elevenlabs" && typeof part.text === "string") {
-        pendingTextThisTurn += part.text;
-        gotText = true;
-        continue;
-      }
       const inline = part.inlineData;
       if (inline && typeof inline.data === "string") {
         const rate = parseRateFromMime(inline.mimeType);
@@ -749,13 +745,22 @@ function handleServerMessage(data) {
         gotAudio = true;
       }
     }
-    if ((gotAudio || gotText) && statusEl.textContent !== "Rayyy is speaking…") {
-      setStatus("Rayyy is thinking…");
-      if (currentProvider === "gemini") {
-        setTimeout(() => {
-          if (isOpen()) setStatus("Rayyy is speaking…");
-        }, SCHEDULE_LOOKAHEAD_S * 1000);
-      }
+  }
+
+  // ElevenLabs path: collect output transcription text as it streams.
+  // We synthesize once turnComplete arrives.
+  const outText = msg?.serverContent?.outputTranscription?.text;
+  if (currentProvider === "elevenlabs" && typeof outText === "string" && outText) {
+    pendingTextThisTurn += outText;
+  }
+
+  const gotText = currentProvider === "elevenlabs" && pendingTextThisTurn;
+  if ((gotAudio || gotText) && statusEl.textContent !== "Rayyy is speaking…") {
+    setStatus("Rayyy is thinking…");
+    if (currentProvider === "gemini") {
+      setTimeout(() => {
+        if (isOpen()) setStatus("Rayyy is speaking…");
+      }, SCHEDULE_LOOKAHEAD_S * 1000);
     }
   }
 
