@@ -267,8 +267,18 @@ export default {
       }
       const text = (body && body.text) || "";
       if (!text.trim()) return new Response("empty text", { status: 400 });
-      const voiceId = env.ELEVENLABS_VOICE_ID;
-      const modelId = env.ELEVENLABS_MODEL_ID || "eleven_flash_v2_5";
+      // Allow callers to override voice_id and voice_settings per-call so
+      // scenario clips (agitated Quick Call, dry Emergency punchline) can
+      // sound different from the conversational Rayyy reply.
+      const voiceId = (body && body.voice_id) || env.ELEVENLABS_VOICE_ID;
+      const modelId =
+        (body && body.model_id) || env.ELEVENLABS_MODEL_ID || "eleven_flash_v2_5";
+      const voiceSettings = (body && body.voice_settings) || {
+        stability: 0.5,
+        similarity_boost: 0.75,
+        style: 0.0,
+        use_speaker_boost: true,
+      };
       const upstream = await fetch(
         `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=2&output_format=mp3_44100_128`,
         {
@@ -281,12 +291,7 @@ export default {
           body: JSON.stringify({
             text,
             model_id: modelId,
-            voice_settings: {
-              stability: 0.5,
-              similarity_boost: 0.75,
-              style: 0.0,
-              use_speaker_boost: true,
-            },
+            voice_settings: voiceSettings,
           }),
         }
       );

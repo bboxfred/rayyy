@@ -1204,6 +1204,7 @@ function hideScenario() {
   scenarioActive = false;
   clearScenarioTimers();
   stopRinging();
+  stopScenarioClip();
   try { speechSynthesis?.cancel(); } catch (_) {}
 }
 scenarioCloseBtn?.addEventListener("click", hideScenario);
@@ -1285,6 +1286,54 @@ function speakMessage(text, opts = {}) {
   });
 }
 
+// Play a scripted ElevenLabs clip — used for scenarios (call answered,
+// emergency punchline, etc). Routes through /tts/elevenlabs with optional
+// voice settings so we can dial in "agitated" / "dry" character.
+let scenarioAudioUrl = null;
+let scenarioAudioEl = null;
+async function playElevenLabsClip(text, opts = {}) {
+  try {
+    const r = await fetch(RELAY_BASE + "/tts/elevenlabs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,
+        voice_id: opts.voice_id || undefined,
+        voice_settings: opts.voice_settings || undefined,
+      }),
+    });
+    if (!r.ok) return false;
+    const blob = await r.blob();
+    if (scenarioAudioUrl) URL.revokeObjectURL(scenarioAudioUrl);
+    scenarioAudioUrl = URL.createObjectURL(blob);
+    // Use a separate audio element so we don't clash with audioOut, which is
+    // bound to the AudioContext stream during a live Rayyy session.
+    if (!scenarioAudioEl) {
+      scenarioAudioEl = document.createElement("audio");
+      scenarioAudioEl.playsInline = true;
+      scenarioAudioEl.autoplay = true;
+    }
+    scenarioAudioEl.src = scenarioAudioUrl;
+    scenarioAudioEl.playbackRate = 1.0;
+    return new Promise((resolve) => {
+      scenarioAudioEl.onended = () => resolve(true);
+      scenarioAudioEl.onerror = () => resolve(false);
+      scenarioAudioEl.play().catch(() => resolve(false));
+    });
+  } catch (_) {
+    return false;
+  }
+}
+function stopScenarioClip() {
+  try {
+    if (scenarioAudioEl) {
+      scenarioAudioEl.pause();
+      scenarioAudioEl.removeAttribute("src");
+      scenarioAudioEl.load();
+    }
+  } catch (_) {}
+}
+
 async function runQuickCall() {
   const cfg = actionConfig.quick_call;
   showScenario({
@@ -1303,10 +1352,19 @@ async function runQuickCall() {
         title: `${cfg.target} picked up`,
         sub: "(answering…)",
       });
-      // Pre-recorded message (browser TTS, faster cadence to feel rushed).
-      await speakMessage(
-        "Eh! Mei ah! I busy now! I catching frogs! Call you back!",
-        { rate: 1.15, pitch: 1.1 }
+      // ElevenLabs Louis voice (Singaporean accent), tuned to "agitated":
+      // very low stability + high style produces lots of emotional inflection.
+      // Cleaner punctuation + line breaks help the model push the energy.
+      await playElevenLabsClip(
+        "Eh! Mei ah! I busy now lah! I catching frogs! Eh, call you back later! Bye bye!",
+        {
+          voice_settings: {
+            stability: 0.18,
+            similarity_boost: 0.85,
+            style: 0.7,
+            use_speaker_boost: true,
+          },
+        }
       );
       if (!scenarioActive) return;
       updateScenario({ icon: "🔚", title: "Call ended", sub: "" });
@@ -1403,9 +1461,18 @@ async function runEmergency() {
         title: "Connected",
         sub: "(picking up…)",
       });
-      await speakMessage(
-        "I won't call SCDF for a hackathon lah!",
-        { rate: 1.1, pitch: 0.95, gender: "male" }
+      // Same Singaporean Louis voice — drier delivery (medium stability,
+      // light style) for the deadpan punchline.
+      await playElevenLabsClip(
+        "Eh hello? I won't call SCDF for a hackathon lah!",
+        {
+          voice_settings: {
+            stability: 0.4,
+            similarity_boost: 0.8,
+            style: 0.35,
+            use_speaker_boost: true,
+          },
+        }
       );
       if (!scenarioActive) return;
       updateScenario({ icon: "🔚", title: "Call ended", sub: "" });
