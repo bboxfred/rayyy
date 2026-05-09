@@ -1055,19 +1055,26 @@ function handleServerMessage(data) {
     ) {
       emitRoom({ kind: "location_query" });
     }
-    // Auto-stop on closing phrases. Matches "that's all", "I'm done",
-    // "stop listening", "goodbye Rayyy", "bye Rayyy", "thanks Rayyy that's
-    // all" — anything that signals she's finished talking. Tears down the
-    // WS so Rayyy stops listening (and stops billing) until she taps Talk
-    // again.
-    if (
-      /\b(that'?s? all|i'?m done|stop listening|good ?bye|bye rayyy|thanks rayyy that'?s? all)\b/.test(
-        lower
-      )
-    ) {
+    // Auto-stop on closing phrases. Tears down the WS so Rayyy stops
+    // listening until she taps Talk again. Patterns are crafted to avoid
+    // firing mid-conversation — "thanks for the directions, where am I"
+    // should NOT trigger, but a bare "thanks" or "thank you Rayyy" should.
+    const trimmed = lower.trim().replace(/[.!?,]+$/, "");
+    const goodbyePatterns = [
+      /\bthat'?s? all\b/,
+      /\bi'?m done\b/,
+      /\bstop listening\b/,
+      /\bgood ?bye\b/,
+      /\bbye rayyy\b/,
+      /\bsee (you|ya)( later)?( rayyy)?\b/,
+      /\bthank you,?\s*rayyy\b/,
+      /\bthanks,?\s*rayyy\b/,
+      /\balright[,. ]?\s*(bye|then)\b/,
+      // Whole-utterance closers (avoid matching mid-sentence "thanks" / "bye"):
+      /^(thanks|thank you|bye|cheers|alright|ok bye|okay bye)$/,
+    ];
+    if (goodbyePatterns.some((p) => p.test(trimmed))) {
       setStatus("Goodbye, Auntie Mei.");
-      // Small delay so any in-flight reply has a chance to start; barge-in
-      // flush would have stopped overlapping audio anyway.
       setTimeout(() => {
         teardownWs("user said goodbye");
       }, 300);
@@ -1196,8 +1203,87 @@ function hideScenario() {
   scenarioOverlay.classList.remove("emergency");
   scenarioActive = false;
   clearScenarioTimers();
+  stopRinging();
+  try { speechSynthesis?.cancel(); } catch (_) {}
 }
 scenarioCloseBtn?.addEventListener("click", hideScenario);
+
+// Synthesize a phone-ring tone. Two short tones (480Hz + 440Hz) = classic
+// dual-tone ring; cadence is ring-ring, pause, ring-ring etc.
+let ringingNodes = [];
+function startRinging(durationSec = 6) {
+  if (!outCtx) ensureOutputContext();
+  stopRinging();
+  const ctx = outCtx;
+  const t0 = ctx.currentTime;
+  const cadence = 2.0; // seconds per ring cycle
+  const ringOn = 0.4; // seconds of tone
+  const cycles = Math.ceil(durationSec / cadence);
+  const master = ctx.createGain();
+  master.gain.value = 0.18;
+  master.connect(ctx.destination);
+  ringingNodes.push(master);
+  for (let i = 0; i < cycles; i++) {
+    const start = t0 + i * cadence;
+    const stop = start + ringOn;
+    const o1 = ctx.createOscillator();
+    const o2 = ctx.createOscillator();
+    o1.type = "sine";
+    o2.type = "sine";
+    o1.frequency.value = 480;
+    o2.frequency.value = 440;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, start);
+    env.gain.linearRampToValueAtTime(1, start + 0.04);
+    env.gain.setValueAtTime(1, stop - 0.04);
+    env.gain.linearRampToValueAtTime(0, stop);
+    o1.connect(env);
+    o2.connect(env);
+    env.connect(master);
+    o1.start(start);
+    o2.start(start);
+    o1.stop(stop);
+    o2.stop(stop);
+    ringingNodes.push(o1, o2, env);
+  }
+}
+function stopRinging() {
+  for (const n of ringingNodes) {
+    try { n.stop?.(0); n.disconnect?.(); } catch (_) {}
+  }
+  ringingNodes = [];
+}
+
+// Browser TTS for the pre-recorded scenario messages. Picks a voice that's
+// ideally NOT the same as Rayyy's Aoede/Louis so it sounds like a different
+// person on the line.
+function pickSpeechVoice(preferGender = "female") {
+  const voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+  // Prefer en-* voices first.
+  const enVoices = voices.filter((v) => /^en/i.test(v.lang));
+  const pool = enVoices.length ? enVoices : voices;
+  // Try to bias by gender via name heuristic.
+  const femaleNames = /samantha|karen|moira|tessa|fiona|martha|alice|kate|google.+female|amy|kathy/i;
+  const maleNames = /daniel|fred|alex|tom|aaron|google.+male|matthew|david/i;
+  const match = pool.find((v) =>
+    preferGender === "female" ? femaleNames.test(v.name) : maleNames.test(v.name)
+  );
+  return match || pool[0] || null;
+}
+function speakMessage(text, opts = {}) {
+  return new Promise((resolve) => {
+    if (!window.speechSynthesis) return resolve();
+    try { speechSynthesis.cancel(); } catch (_) {}
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = opts.rate || 1.0;
+    utter.pitch = opts.pitch || 1.0;
+    const voice = pickSpeechVoice(opts.gender || "female");
+    if (voice) utter.voice = voice;
+    utter.onend = () => resolve();
+    utter.onerror = () => resolve();
+    speechSynthesis.speak(utter);
+  });
+}
 
 async function runQuickCall() {
   const cfg = actionConfig.quick_call;
@@ -1207,30 +1293,31 @@ async function runQuickCall() {
     sub: cfg.phone || "",
   });
   emitRoom({ kind: "voice_switch", provider: "quick_call", ok: true });
-  // ringing -> connected -> ended (mocked)
+  startRinging(3);
   scenarioTimers.push(
-    setTimeout(() => {
+    setTimeout(async () => {
       if (!scenarioActive) return;
+      stopRinging();
       updateScenario({
         icon: "✅",
-        title: `Connected — ${cfg.target}`,
-        sub: "Talk to her now. (demo: not real telephony)",
+        title: `${cfg.target} picked up`,
+        sub: "(answering…)",
       });
-    }, 2400)
-  );
-  scenarioTimers.push(
-    setTimeout(() => {
+      // Pre-recorded message (browser TTS, faster cadence to feel rushed).
+      await speakMessage(
+        "Eh! Mei ah! I busy now! I catching frogs! Call you back!",
+        { rate: 1.15, pitch: 1.1 }
+      );
       if (!scenarioActive) return;
       updateScenario({ icon: "🔚", title: "Call ended", sub: "" });
-      scenarioTimers.push(setTimeout(hideScenario, 1500));
-    }, 7400)
+      scenarioTimers.push(setTimeout(hideScenario, 1300));
+    }, 3000)
   );
 }
 
 async function runEnquireMaps() {
-  // Open a session if needed, then inject a synthetic user prompt asking
-  // about location + nearby places. Rayyy answers with its real grounding
-  // (today's situation + googleSearch).
+  // Open a session if needed, then ask Rayyy to say a specific opening
+  // line and stay listening for follow-ups (where to navigate to, etc).
   if (!isOpen()) {
     if (!micStream) {
       try {
@@ -1249,8 +1336,10 @@ async function runEnquireMaps() {
     return;
   }
   const prompt =
-    "Tell me where I am right now and what's around me — venue name, " +
-    "what direction the exit is, anything useful for a blind person here.";
+    "The user just tapped the Maps button. Say to her, in your current " +
+    "voice, exactly: \"We are at Acacia College at NUS. Do you need " +
+    "directions to anywhere?\" Then wait for her reply and help her " +
+    "navigate from there.";
   try {
     ws.send(
       JSON.stringify({
@@ -1260,7 +1349,7 @@ async function runEnquireMaps() {
         },
       })
     );
-    setStatus("Asking Rayyy about your location…");
+    setStatus("Asking Rayyy for directions…");
     emitRoom({ kind: "location_query" });
   } catch (_) {}
 }
@@ -1274,17 +1363,24 @@ async function runEmergency() {
     emergency: true,
   });
   emitRoom({ kind: "voice_switch", provider: "emergency_call", ok: true });
-  // primary contact rings, no answer, switch to 999/995
+
+  const ringSec = cfg.ring_seconds || 4;
+  startRinging(ringSec);
+
+  // Phase 1: primary contact rings, no answer.
   scenarioTimers.push(
     setTimeout(() => {
       if (!scenarioActive) return;
+      stopRinging();
       updateScenario({
         icon: "⏱",
         title: `${cfg.primary} not answering…`,
         sub: "Switching to emergency services.",
       });
-    }, (cfg.ring_seconds || 5) * 1000)
+    }, ringSec * 1000)
   );
+
+  // Phase 2: switch to SCDF — start ringing again.
   scenarioTimers.push(
     setTimeout(() => {
       if (!scenarioActive) return;
@@ -1293,17 +1389,28 @@ async function runEmergency() {
         title: `Calling ${cfg.fallback}…`,
         sub: "Singapore Civil Defence Force",
       });
-    }, ((cfg.ring_seconds || 5) + 1.4) * 1000)
+      startRinging(2.4);
+    }, (ringSec + 1.6) * 1000)
   );
+
+  // Phase 3: SCDF "answers" with the punchline.
   scenarioTimers.push(
-    setTimeout(() => {
+    setTimeout(async () => {
       if (!scenarioActive) return;
+      stopRinging();
       updateScenario({
-        icon: "✅",
-        title: "Connected to emergency services",
-        sub: "Help is on the way. Stay where you are.",
+        icon: "🎤",
+        title: "Connected",
+        sub: "(picking up…)",
       });
-    }, ((cfg.ring_seconds || 5) + 4.4) * 1000)
+      await speakMessage(
+        "I won't call SCDF for a hackathon lah!",
+        { rate: 1.1, pitch: 0.95, gender: "male" }
+      );
+      if (!scenarioActive) return;
+      updateScenario({ icon: "🔚", title: "Call ended", sub: "" });
+      scenarioTimers.push(setTimeout(hideScenario, 1300));
+    }, (ringSec + 4.0) * 1000)
   );
 }
 
