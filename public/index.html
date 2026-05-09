@@ -10,135 +10,151 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta
       name="description"
-      content="Rayyy — a voice + vision AI companion for elderly visually impaired users. Live demo for AI Engineer Singapore 2026."
+      content="Rayyy — a new kind of phone for the blind. 17 years after the touchscreen reshaped everything, a phone that doesn't need one."
     />
-    <title>Rayyy — voice + vision for the blind</title>
+    <title>Rayyy — the new Phone, for the blind</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main>
-      <!-- Hero -->
+      <!-- Hero (visible on both screens) -->
       <header class="hero">
         <h1 class="braille-logo" aria-label="rayyy">⠗ ⠁ ⠽ ⠽ ⠽</h1>
-        <p class="tagline">
-          a voice + vision companion <span class="ink">designed without a screen</span>
+        <p class="tagline">The new Phone — for the blind.</p>
+        <p class="subtagline">
+          17 years after the touchscreen reshaped everything, a phone that
+          doesn't need one. <strong>185 million people</strong> have been waiting.
         </p>
-        <p id="voice-tag" class="voice-tag">Voice: …</p>
       </header>
 
-      <!-- Intro: what is this -->
-      <section class="card intro before-start">
-        <h2>What is this?</h2>
-        <p class="lead">
-          A makeshift software-and-hardware demo of a smartphone built for blind
-          elderly users. The user wears the phone on their chest with earbuds
-          plugged in. Rayyy listens, looks when asked, and talks back —
-          the whole product is shaped around <strong>not needing the screen</strong>.
-        </p>
-        <p class="meta">
-          Persona: <strong>Auntie Mei</strong>, 72, lives alone in Toa Payoh,
-          lost her sight five years ago. She's at AI Engineer Singapore today.
-        </p>
-        <div class="product">
-          <img
-            id="product-img"
-            src="/assets/product.jpg"
-            alt="Phone strapped to chest with USB-C EarPods"
-            onerror="this.remove(); document.getElementById('product-fallback').classList.add('show');"
-          />
-          <div id="product-fallback" class="product-fallback">
-            <div class="product-emoji" aria-hidden="true">📱<span>·</span>🎧</div>
-            <p class="product-caption">phone on chest · USB-C EarPods · Bluetooth speaker</p>
+      <!-- Screen 1: What is this -->
+      <section class="section-intro">
+        <section class="card intro">
+          <h2>What is this?</h2>
+          <p class="lead">
+            A working demo of the next phone — built for elderly visually
+            impaired users. The user wears it on their chest with earbuds.
+            It listens, looks when asked, and talks back. The whole product
+            is shaped around <strong>not needing the screen</strong>.
+          </p>
+          <p class="meta">
+            Persona: <strong>Auntie Mei</strong>, 72, lives alone in Toa Payoh,
+            lost her sight five years ago. She's at AI Engineer Singapore today.
+          </p>
+          <div class="product">
+            <img
+              id="product-img"
+              src="/assets/product.jpg"
+              alt="Phone strapped to chest with USB-C EarPods"
+              onerror="this.remove(); document.getElementById('product-fallback').classList.add('show');"
+            />
+            <div id="product-fallback" class="product-fallback">
+              <div class="product-emoji" aria-hidden="true">📱<span>·</span>🎧</div>
+              <p class="product-caption">phone on chest · USB-C EarPods · Bluetooth speaker</p>
+            </div>
           </div>
-        </div>
+        </section>
+
+        <button id="continue-btn" class="big primary continue-btn">
+          Get started <span class="arrow">→</span>
+        </button>
       </section>
 
-      <!-- Try it -->
-      <section class="card try before-start">
-        <h2>Try it yourself</h2>
-        <p class="lead">
-          Tap <strong>Start</strong> to grant mic + camera. Then tap <strong>Talk</strong>
-          and say any of these — Rayyy is unscripted, phrasing doesn't matter:
-        </p>
-        <ol class="try-list">
-          <li>
-            <span class="try-num">1</span>
-            <div>
-              <span class="try-prompt">"Hello Rayyy."</span>
-              <span class="try-note">normal English greeting</span>
-            </div>
-          </li>
-          <li>
-            <span class="try-num">2</span>
-            <div>
-              <span class="try-prompt">"Eh, what time is it ah?"</span>
-              <span class="try-note">Singlish — Rayyy will mirror your register</span>
-            </div>
-          </li>
-          <li>
-            <span class="try-num">3</span>
-            <div>
-              <span class="try-prompt">"What am I holding?"</span>
-              <span class="try-note">point camera at something — vision works on demand</span>
-            </div>
-          </li>
-          <li>
-            <span class="try-num">4</span>
-            <div>
-              <span class="try-prompt">"Where am I?"</span>
-              <span class="try-note">situational awareness — the family dashboard pulses too</span>
-            </div>
-          </li>
-          <li>
-            <span class="try-num">5</span>
-            <div>
-              <span class="try-prompt">"Switch to ElevenLabs."</span>
-              <span class="try-note warn">
-                changes voice provider mid-conversation —
-                <strong>noticeably laggier</strong>: text routes through Gemini → ElevenLabs → MP3
-                (extra hop, more latency)
-              </span>
-            </div>
-          </li>
-          <li>
-            <span class="try-num">6</span>
-            <div>
-              <span class="try-prompt">"Call my emergency contact."</span>
-              <span class="try-note">emergency flow — Rayyy will tell you honestly that real telephony isn't wired in this demo</span>
-            </div>
-          </li>
-          <li>
-            <span class="try-num">7</span>
-            <div>
-              <span class="try-prompt">"That's all."</span>
-              <span class="try-note">auto-disconnects so the mic stops listening</span>
-            </div>
-          </li>
-        </ol>
-        <p class="try-tip">
-          Tip: earbuds recommended. Spacebar (or the EarPods inline button)
-          toggles Talk so you can keep your hands free.
-        </p>
-      </section>
+      <!-- Screen 2: Try it + controls -->
+      <section class="section-try">
+        <p id="voice-tag" class="voice-tag">Voice: …</p>
 
-      <!-- Status -->
-      <section id="status-card" class="card status-card">
-        <p id="status">Tap to start.</p>
-        <p id="hint" class="hint">
-          Mic + camera permission needed.
-        </p>
-      </section>
+        <section class="card try before-start">
+          <h2>Try it yourself</h2>
+          <p class="lead">
+            Tap <strong>Start</strong> to grant mic + camera. Then tap <strong>Talk</strong>
+            and say any of these — Rayyy is unscripted, phrasing doesn't matter:
+          </p>
+          <ol class="try-list">
+            <li>
+              <span class="try-num">1</span>
+              <div>
+                <span class="try-prompt">"Hello Rayyy."</span>
+                <span class="try-note">normal English greeting</span>
+              </div>
+            </li>
+            <li>
+              <span class="try-num">2</span>
+              <div>
+                <span class="try-prompt">"Eh, what time is it ah?"</span>
+                <span class="try-note">Singlish — Rayyy will mirror your register</span>
+              </div>
+            </li>
+            <li>
+              <span class="try-num">3</span>
+              <div>
+                <span class="try-prompt">"What am I holding?"</span>
+                <span class="try-note">point camera at something — vision works on demand</span>
+              </div>
+            </li>
+            <li>
+              <span class="try-num">4</span>
+              <div>
+                <span class="try-prompt">"Where am I?"</span>
+                <span class="try-note">situational awareness — the family dashboard pulses too</span>
+              </div>
+            </li>
+            <li>
+              <span class="try-num">5</span>
+              <div>
+                <span class="try-prompt">"Who is in front of me?"</span>
+                <span class="try-note">on-device face matching — recognizes Kimberly, otherwise describes generically (never fabricates)</span>
+              </div>
+            </li>
+            <li>
+              <span class="try-num">6</span>
+              <div>
+                <span class="try-prompt">"Switch to ElevenLabs."</span>
+                <span class="try-note warn">
+                  changes voice provider mid-conversation —
+                  <strong>noticeably laggier</strong>: text routes through Gemini → ElevenLabs → MP3
+                  (extra hop, more latency)
+                </span>
+              </div>
+            </li>
+            <li>
+              <span class="try-num">7</span>
+              <div>
+                <span class="try-prompt">"Call my emergency contact."</span>
+                <span class="try-note">emergency flow — Rayyy will tell you honestly that real telephony isn't wired in this demo</span>
+              </div>
+            </li>
+            <li>
+              <span class="try-num">8</span>
+              <div>
+                <span class="try-prompt">"That's all."</span>
+                <span class="try-note">auto-disconnects so the mic stops listening</span>
+              </div>
+            </li>
+          </ol>
+          <p class="try-tip">
+            Tip: earbuds recommended. Spacebar (or the EarPods inline button)
+            toggles Talk so you can keep your hands free.
+          </p>
+        </section>
 
-      <!-- Controls -->
-      <section class="controls">
-        <button id="start-btn" class="big">Tap to start</button>
-        <button id="talk-btn" class="big primary" disabled>Talk</button>
+        <!-- Status -->
+        <section id="status-card" class="card status-card">
+          <p id="status">Tap to start.</p>
+          <p id="hint" class="hint">Mic + camera permission needed.</p>
+        </section>
+
+        <!-- Controls -->
+        <section class="controls">
+          <button id="start-btn" class="big">Tap to start</button>
+          <button id="talk-btn" class="big primary" disabled>Talk</button>
+        </section>
       </section>
 
       <!-- Viewfinder. Hidden until Rayyy fires enable_camera.
@@ -170,6 +186,6 @@
       </footer>
     </main>
 
-    <script src="/app.js?v=14"></script>
+    <script src="/app.js?v=15"></script>
   </body>
 </html>

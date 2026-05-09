@@ -1041,6 +1041,15 @@ async function onStart() {
 startBtn.addEventListener("click", onStart);
 talkBtn.addEventListener("click", toggleTalk);
 
+// Two-screen flow: tapping "Get started" reveals the try-it section + controls.
+const continueBtn = document.getElementById("continue-btn");
+if (continueBtn) {
+  continueBtn.addEventListener("click", () => {
+    document.body.classList.add("intro-passed");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
 // Spacebar + earbud-tap (MediaPlayPause) toggle Talk once started.
 window.addEventListener("keydown", (e) => {
   if (talkBtn.disabled) return;

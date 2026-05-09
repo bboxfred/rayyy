@@ -404,6 +404,64 @@ button.big.primary.live {
   color: var(--accent);
 }
 
+/* Two-screen flow.
+   Screen 1 (.section-intro): hero + "What is this?" + Get-started button.
+   Screen 2 (.section-try): voice tag + try-it list + status + controls.
+   Body class .intro-passed swaps which screen is visible. */
+.section-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.section-try {
+  display: none;
+  flex-direction: column;
+  gap: 18px;
+}
+body.intro-passed .section-intro {
+  display: none;
+}
+body.intro-passed .section-try {
+  display: flex;
+}
+
+.continue-btn {
+  margin-top: 4px;
+  font-family: inherit;
+}
+.continue-btn .arrow {
+  display: inline-block;
+  transition: transform 200ms ease;
+}
+.continue-btn:hover .arrow,
+.continue-btn:focus-visible .arrow {
+  transform: translateX(4px);
+}
+
+/* Bigger, denser tagline pair for the new hero. */
+.tagline {
+  margin: 0;
+  font-family: "Fraunces", Georgia, serif;
+  font-size: clamp(26px, 6.5vw, 36px);
+  line-height: 1.15;
+  color: var(--fg);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.subtagline {
+  margin: 4px 0 0;
+  font-size: clamp(14px, 3.6vw, 16px);
+  line-height: 1.5;
+  color: var(--fg-muted);
+  max-width: 46ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+.subtagline strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* Once the user taps Start, hide the before-start cards to clear the
    stage for the live conversation. The status card + controls + viewfinder
    become the focus. */
