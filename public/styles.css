@@ -440,33 +440,23 @@ body.intro-passed .screen-intro-only { display: none; }
   cursor: pointer;
 }
 
-/* ---------- footer ---------- */
-.page-footer {
-  position: fixed;
-  bottom: max(env(safe-area-inset-bottom), 12px);
-  left: 0;
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 0 12px;
-  pointer-events: none;
-}
-.page-footer * { pointer-events: auto; }
-.dashboard-link {
-  display: none; /* hidden on screen 1 since we have the Continue button */
+/* ---------- inline footer (sits below the Continue button on screen 1) ---------- */
+.page-footer-inline {
+  flex: 0 0 auto;
+  padding: 4px 4px 0;
+  text-align: center;
 }
 .brand {
   margin: 0;
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10px;
   color: var(--muted);
+  line-height: 1.5;
 }
 .brand a {
   color: var(--fg-muted);
   text-decoration: none;
-  margin-left: 6px;
+  margin: 0 4px;
   border-bottom: 1px dotted var(--edge-bright);
 }
 .brand a:hover { color: var(--accent); }
@@ -479,8 +469,8 @@ button.big {
   background: var(--card);
   color: var(--fg);
   border-radius: 14px;
-  padding: 18px 18px;
-  font-size: 18px;
+  padding: 14px 18px;
+  font-size: 17px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
