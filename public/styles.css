@@ -370,6 +370,16 @@ body.intro-passed .screen-intro-only { display: none; }
 .action-emoji { font-size: 18px; line-height: 1; }
 .action-label { font-size: 13px; }
 
+.bar-caption {
+  flex: 0 0 auto;
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--fg-muted);
+  text-align: center;
+  font-style: italic;
+  line-height: 1.4;
+}
+
 /* ---------- scenario overlay (call / maps / emergency) ---------- */
 .scenario-overlay {
   position: fixed;
