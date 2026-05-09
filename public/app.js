@@ -27,11 +27,12 @@ const WS_URL = RELAY_BASE.replace(/^http/, "ws") + "/ws";
 
 const INPUT_SAMPLE_RATE = 16000; // Gemini Live wants 16kHz mono PCM16 in
 const OUTPUT_SAMPLE_RATE = 24000; // Gemini Live emits 24kHz mono PCM16 out
-// Jitter buffer: always schedule audio at least this far ahead of the
-// AudioContext clock. Gives the queue tolerance for chunks arriving in
-// bursts instead of evenly. Without this, late chunks underrun and you
-// hear sputtering / pitch wobble on weaker networks.
-const SCHEDULE_LOOKAHEAD_S = 0.15;
+// Jitter buffer: each turn's first audio chunk is scheduled this far in the
+// future. Subsequent chunks ride the queue. The cushion absorbs network jitter
+// and TTS rate variation — without it, late chunks underrun and you hear
+// sputtering / pitch wobble. 700ms is a clear "Rayyy is thinking" pause that
+// feels intentional and lets the queue fill comfortably before playback.
+const SCHEDULE_LOOKAHEAD_S = 0.7;
 
 // ---------- DOM ----------
 const startBtn = document.getElementById("start-btn");
@@ -613,17 +614,28 @@ function handleServerMessage(data) {
   // streams at once (which sounds like pitch wobble + speed wandering).
   if (msg?.serverContent?.interrupted) {
     flushAudio("server interrupt");
+    setStatus("Listening…");
   }
 
   // serverContent.modelTurn.parts[].inlineData.{mimeType, data}
   const parts = msg?.serverContent?.modelTurn?.parts;
   if (Array.isArray(parts)) {
+    let gotAudio = false;
     for (const part of parts) {
       const inline = part.inlineData;
       if (inline && typeof inline.data === "string") {
         const rate = parseRateFromMime(inline.mimeType);
         playAudioChunk(inline.data, rate);
+        gotAudio = true;
       }
+    }
+    if (gotAudio && statusEl.textContent !== "Rayyy is speaking…") {
+      // Status flips to "thinking" briefly then "speaking" once audio is queued —
+      // matches the 700ms pre-buffer wait so the user understands the pause.
+      setStatus("Rayyy is thinking…");
+      setTimeout(() => {
+        if (isOpen()) setStatus("Rayyy is speaking…");
+      }, SCHEDULE_LOOKAHEAD_S * 1000);
     }
   }
 
@@ -638,6 +650,10 @@ function handleServerMessage(data) {
         emitRoom({ kind: "scene_described" });
       }
     }
+    // Wait for the queued audio to finish, then go back to listening.
+    setTimeout(() => {
+      if (isOpen() && activeSources.length === 0) setStatus("Listening…");
+    }, 200);
   }
 
   // Input transcription is used LOCALLY only — never forwarded.
