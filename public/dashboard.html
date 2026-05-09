@@ -520,6 +520,22 @@
       })();
       const fakeMode = new URLSearchParams(location.search).get("fake") === "true";
 
+      // ---------- live voice pill from /health ----------
+      // Reads the locked voice + model name from the Worker on load so future
+      // voice changes don't need a dashboard redeploy.
+      (async () => {
+        try {
+          const r = await fetch(relayBase + "/health", { cache: "no-store" });
+          if (!r.ok) return;
+          const j = await r.json();
+          const pill = document.getElementById("voice-pill");
+          if (pill && j.voice) {
+            pill.innerHTML =
+              `<span class="dot" style="background:var(--sky)"></span>Voice: ${j.voice}`;
+          }
+        } catch (_) {}
+      })();
+
       // ---------- header / clock / greeting ----------
       const clockEl = document.getElementById("clock");
       const greetingEl = document.getElementById("greeting");
