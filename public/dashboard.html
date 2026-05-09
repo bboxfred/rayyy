@@ -492,26 +492,16 @@
           </div>
         </div>
 
-        <!-- Reach Mum + Emergency -->
+        <!-- Reach Mum + Emergency (customizable) -->
         <div class="card warm p-5 reveal flex flex-col gap-3">
-          <div>
-            <h3 class="display text-xl mb-3">Reach Mum</h3>
-            <button class="w-full text-left px-4 py-3 rounded-xl bg-[var(--paper)] border border-[var(--edge)] hover:border-[var(--warm)] transition">
-              <div class="display text-lg">Voice call Mum</div>
-              <div class="text-xs text-[var(--ink-muted)]">Rayyy answers, hands her the phone</div>
-            </button>
-            <button class="w-full text-left px-4 py-3 rounded-xl bg-[var(--paper)] border border-[var(--edge)] hover:border-[var(--warm)] transition mt-2">
-              <div class="display text-lg">Send a voice note</div>
-              <div class="text-xs text-[var(--ink-muted)]">Rayyy reads it to her later</div>
-            </button>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="display text-xl">Reach Mum</h3>
+            <button id="edit-toggle" class="text-xs text-[var(--ink-muted)] hover:text-[var(--warm)] underline-offset-2 hover:underline">Edit</button>
           </div>
+          <div id="reach-actions" class="flex flex-col gap-2"></div>
           <div class="border-t border-[var(--edge)] pt-3">
             <p class="text-xs text-[var(--ink-muted)] uppercase tracking-[0.16em] mb-2">Emergency</p>
-            <div class="flex flex-wrap gap-2 text-sm">
-              <span class="pill">Ah-Hua · 9123 4567</span>
-              <span class="pill">Mr. Lim · 9876 5432</span>
-              <span class="pill">SCDF 995</span>
-            </div>
+            <div id="emergency-pills" class="flex flex-wrap gap-2 text-sm"></div>
           </div>
         </div>
       </section>
@@ -532,6 +522,122 @@
         return "https://rayyy-relay.fred-53e.workers.dev";
       })();
       const fakeMode = new URLSearchParams(location.search).get("fake") === "true";
+
+      // ---------- customizable Reach Mum + Emergency contacts ----------
+      // Stored in localStorage so the family member's tweaks persist across
+      // dashboard reloads. Click "Edit" to enter edit mode, then any pill or
+      // button label is contenteditable + a Remove button appears.
+      const REACH_KEY = "rayyy_dashboard_reach_v1";
+      const DEFAULT_REACH = {
+        actions: [
+          { label: "Voice call Mum", note: "Rayyy answers, hands her the phone" },
+          { label: "Send a voice note", note: "Rayyy reads it to her later" },
+        ],
+        emergency: [
+          { name: "Ah-Hua", phone: "9123 4567" },
+          { name: "Mr. Lim", phone: "9876 5432" },
+          { name: "SCDF 995", phone: "" },
+        ],
+      };
+      function loadReach() {
+        try {
+          const raw = localStorage.getItem(REACH_KEY);
+          if (!raw) return JSON.parse(JSON.stringify(DEFAULT_REACH));
+          return { ...DEFAULT_REACH, ...JSON.parse(raw) };
+        } catch (_) {
+          return JSON.parse(JSON.stringify(DEFAULT_REACH));
+        }
+      }
+      function saveReach(r) {
+        try { localStorage.setItem(REACH_KEY, JSON.stringify(r)); } catch (_) {}
+      }
+      let reach = loadReach();
+      let editMode = false;
+
+      function renderReach() {
+        const actionsEl = document.getElementById("reach-actions");
+        const emergencyEl = document.getElementById("emergency-pills");
+        actionsEl.innerHTML = "";
+        emergencyEl.innerHTML = "";
+
+        reach.actions.forEach((a, i) => {
+          const btn = document.createElement("button");
+          btn.className =
+            "w-full text-left px-4 py-3 rounded-xl bg-[var(--paper)] border border-[var(--edge)] hover:border-[var(--warm)] transition";
+          btn.innerHTML = `
+            <div class="display text-lg" data-field="label" data-idx="${i}">${a.label}</div>
+            <div class="text-xs text-[var(--ink-muted)]" data-field="note" data-idx="${i}">${a.note}</div>
+          `;
+          actionsEl.appendChild(btn);
+        });
+
+        reach.emergency.forEach((e, i) => {
+          const pill = document.createElement("span");
+          pill.className = "pill";
+          pill.dataset.idx = i;
+          pill.innerHTML = e.phone
+            ? `<span data-field="name">${e.name}</span> · <span data-field="phone">${e.phone}</span>`
+            : `<span data-field="name">${e.name}</span>`;
+          emergencyEl.appendChild(pill);
+        });
+
+        applyEditAffordance();
+      }
+
+      function applyEditAffordance() {
+        const editables = document.querySelectorAll(
+          "#reach-actions [data-field], #emergency-pills [data-field]"
+        );
+        editables.forEach((el) => {
+          if (editMode) {
+            el.contentEditable = "true";
+            el.style.outline = "1px dashed var(--warm)";
+            el.style.outlineOffset = "2px";
+            el.style.borderRadius = "4px";
+            el.style.cursor = "text";
+            el.addEventListener("blur", onEditBlur);
+          } else {
+            el.contentEditable = "false";
+            el.style.outline = "";
+            el.style.cursor = "";
+            el.removeEventListener("blur", onEditBlur);
+          }
+        });
+      }
+
+      function onEditBlur(e) {
+        const el = e.currentTarget;
+        const field = el.getAttribute("data-field");
+        const parent = el.closest("[data-idx]") || el.closest("button");
+        const text = el.textContent.trim();
+        // Find which list + idx this came from.
+        const inActions = el.closest("#reach-actions");
+        const inEmergency = el.closest("#emergency-pills");
+        if (inActions) {
+          // The button has children with data-idx
+          const idxEl = el.closest("button").querySelector("[data-idx]");
+          const idx = idxEl ? parseInt(idxEl.getAttribute("data-idx"), 10) : null;
+          if (idx !== null && reach.actions[idx]) {
+            reach.actions[idx][field] = text;
+            saveReach(reach);
+          }
+        } else if (inEmergency) {
+          const pill = el.closest("[data-idx]");
+          const idx = parseInt(pill.getAttribute("data-idx"), 10);
+          if (!isNaN(idx) && reach.emergency[idx]) {
+            reach.emergency[idx][field] = text;
+            saveReach(reach);
+          }
+        }
+      }
+
+      document.getElementById("edit-toggle").addEventListener("click", () => {
+        editMode = !editMode;
+        document.getElementById("edit-toggle").textContent = editMode ? "Done" : "Edit";
+        applyEditAffordance();
+      });
+
+      renderReach();
 
       // ---------- live voice pill from /health ----------
       // Reads the locked voice + model name from the Worker on load so future
