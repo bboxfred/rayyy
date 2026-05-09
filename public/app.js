@@ -801,16 +801,33 @@ function handleServerMessage(data) {
   }
 
   // Input transcription is used LOCALLY only — never forwarded.
-  // Detect "where am I" intent for the dashboard's location pin.
   const inText = msg?.serverContent?.inputTranscription?.text;
   if (inText && typeof inText === "string") {
     const lower = inText.toLowerCase();
+    // Dashboard location pin
     if (
       /\bwhere (am i|are we|is this)\b/.test(lower) ||
       /what (place|venue) is this/.test(lower) ||
       /what is this place/.test(lower)
     ) {
       emitRoom({ kind: "location_query" });
+    }
+    // Auto-stop on closing phrases. Matches "that's all", "I'm done",
+    // "stop listening", "goodbye Rayyy", "bye Rayyy", "thanks Rayyy that's
+    // all" — anything that signals she's finished talking. Tears down the
+    // WS so Rayyy stops listening (and stops billing) until she taps Talk
+    // again.
+    if (
+      /\b(that'?s? all|i'?m done|stop listening|good ?bye|bye rayyy|thanks rayyy that'?s? all)\b/.test(
+        lower
+      )
+    ) {
+      setStatus("Goodbye, Auntie Mei.");
+      // Small delay so any in-flight reply has a chance to start; barge-in
+      // flush would have stopped overlapping audio anyway.
+      setTimeout(() => {
+        teardownWs("user said goodbye");
+      }, 300);
     }
   }
 }
