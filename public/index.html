@@ -30,26 +30,28 @@
           <p class="tagline">The new Phone — for the blind.</p>
           <p class="subtagline">
             17 years after the touchscreen reshaped everything, a phone that
-            doesn't need one. <strong>185 million people</strong> have been waiting.
+            doesn't need one. <strong>Over 295 million people</strong> have been
+            waiting for a phone they can actually use.
           </p>
         </header>
 
         <section class="card intro">
-          <h2>What is this?</h2>
-          <p class="lead">
-            A working demo of a phone built for blind users. Worn on the chest,
-            voice in / voice out, listens, looks when asked, talks back —
-            no screen needed.
-          </p>
-          <p class="meta">
-            Persona: <strong>Auntie Mei</strong>, 72, lost her sight five years
-            ago. She's at AI Engineer Singapore today.
-          </p>
           <div class="product">
+            <video
+              id="product-video"
+              src="/assets/product.mp4"
+              autoplay
+              loop
+              muted
+              playsinline
+              poster="/assets/product.jpg"
+              onerror="this.remove(); var fb=document.getElementById('product-img'); if(fb){ fb.style.display='block'; }"
+            ></video>
             <img
               id="product-img"
               src="/assets/product.jpg"
               alt="Phone strapped to chest with USB-C EarPods"
+              style="display:none;"
               onerror="this.remove(); document.getElementById('product-fallback').classList.add('show');"
             />
             <div id="product-fallback" class="product-fallback">
@@ -57,6 +59,17 @@
               <p class="product-caption">phone on chest · USB-C EarPods · Bluetooth speaker</p>
             </div>
           </div>
+          <h2>What is this?</h2>
+          <p class="lead">
+            A working prototype of the software, voice agent, and vision
+            functions for this new phone — as shown in the video. Worn on
+            the chest, voice in and voice out. The user listens, looks
+            when asked, and talks back. No screen needed.
+          </p>
+          <p class="meta">
+            Persona: <strong>Auntie Mei</strong>, 72, lost her sight five years
+            ago. She's at AI Engineer Singapore today.
+          </p>
         </section>
 
         <button id="continue-btn" class="big primary continue-btn">
@@ -134,6 +147,6 @@
       </footer>
     </main>
 
-    <script src="/app.js?v=17"></script>
+    <script src="/app.js?v=18"></script>
   </body>
 </html>

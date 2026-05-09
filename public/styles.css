@@ -170,7 +170,8 @@ body.intro-passed .screen-intro-only { display: none; }
   align-items: center;
   justify-content: center;
 }
-.product img {
+.product img,
+.product video {
   display: block;
   width: 100%;
   height: 100%;
