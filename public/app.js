@@ -84,8 +84,42 @@ const KIMBERLY_REFERENCE_PATHS = [
 ];
 // FaceMatcher distance threshold — LOWER is stricter. 0.55 is a balanced
 // default that gates against false positives while still matching across
-// modest pose / lighting variation.
+// modest pose / lighting variation. The matcher contains ONLY Kimberly,
+// so a stranger gets best.label === "unknown" and we return recognized:false.
 const FACE_MATCH_THRESHOLD = 0.55;
+
+// Descriptor cache: persist the 128-dim embeddings in localStorage so we
+// never have to re-run face-detection on the reference photos after the
+// first session. Bump REF_VERSION if the photos change.
+const FACE_CACHE_KEY = "rayyy_face_descriptors_v1";
+const FACE_REF_VERSION = KIMBERLY_REFERENCE_PATHS.join("|") + "|v1";
+
+function loadDescriptorsFromCache() {
+  try {
+    const raw = localStorage.getItem(FACE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed.version !== FACE_REF_VERSION) return null;
+    if (!Array.isArray(parsed.descriptors) || parsed.descriptors.length === 0)
+      return null;
+    return parsed.descriptors.map((a) => new Float32Array(a));
+  } catch (_) {
+    return null;
+  }
+}
+
+function saveDescriptorsToCache(descriptors) {
+  try {
+    localStorage.setItem(
+      FACE_CACHE_KEY,
+      JSON.stringify({
+        version: FACE_REF_VERSION,
+        descriptors: descriptors.map((d) => Array.from(d)),
+        ts: Date.now(),
+      })
+    );
+  } catch (_) {}
+}
 
 // camera state
 let camStream = null;
@@ -571,35 +605,52 @@ async function ensureFaceModels() {
       faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
     ]);
 
-    // Compute reference descriptors for Kimberly.
-    const refDescriptors = [];
-    for (const path of KIMBERLY_REFERENCE_PATHS) {
-      try {
-        const img = await loadImageEl(path);
-        const det = await faceapi
-          .detectSingleFace(
-            img,
-            new faceapi.TinyFaceDetectorOptions({
-              inputSize: 416,
-              scoreThreshold: 0.3,
-            })
-          )
-          .withFaceLandmarks()
-          .withFaceDescriptor();
-        if (det) refDescriptors.push(det.descriptor);
-      } catch (err) {
-        console.warn("[face] reference load failed:", path, err);
+    // Try the descriptor cache first — if the same photos were processed in
+    // a previous session, restore from localStorage and skip face-detection
+    // on the reference images entirely (~1.5s saved).
+    let refDescriptors = loadDescriptorsFromCache();
+    if (refDescriptors && refDescriptors.length > 0) {
+      console.log(
+        "[face] loaded",
+        refDescriptors.length,
+        "Kimberly references from cache"
+      );
+    } else {
+      refDescriptors = [];
+      for (const path of KIMBERLY_REFERENCE_PATHS) {
+        try {
+          const img = await loadImageEl(path);
+          const det = await faceapi
+            .detectSingleFace(
+              img,
+              new faceapi.TinyFaceDetectorOptions({
+                inputSize: 416,
+                scoreThreshold: 0.3,
+              })
+            )
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+          if (det) refDescriptors.push(det.descriptor);
+        } catch (err) {
+          console.warn("[face] reference load failed:", path, err);
+        }
       }
+      if (refDescriptors.length === 0) {
+        throw new Error("no Kimberly reference faces could be processed");
+      }
+      saveDescriptorsToCache(refDescriptors);
+      console.log(
+        "[face] computed + cached",
+        refDescriptors.length,
+        "Kimberly references"
+      );
     }
-    if (refDescriptors.length === 0) {
-      throw new Error("no Kimberly reference faces could be processed");
-    }
+
     faceMatcher = new faceapi.FaceMatcher(
       [new faceapi.LabeledFaceDescriptors("Kimberly", refDescriptors)],
       FACE_MATCH_THRESHOLD
     );
     faceModelsReady = true;
-    console.log("[face] ready with", refDescriptors.length, "Kimberly references");
     return true;
   })();
   return faceModelsPromise;
@@ -1326,3 +1377,17 @@ window.addEventListener("keydown", (e) => {
   }
 });
 // iOS Safari sometimes intercepts MediaPlayPause; the on-screen Talk button covers that case.
+
+// Preload face-matching models on page load so they're ready by the time
+// the judge taps Talk. Browser HTTP cache handles the ~6MB of weights on
+// repeat visits; descriptors are cached in localStorage so we don't even
+// re-run face-detection on the reference photos.
+window.addEventListener("load", () => {
+  ensureFaceModels()
+    .then(() => {
+      console.log("[face] preload complete on page load");
+    })
+    .catch((err) => {
+      console.warn("[face] preload on page load failed:", err && err.message);
+    });
+});
