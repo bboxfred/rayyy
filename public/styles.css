@@ -380,6 +380,34 @@ body.intro-passed .screen-intro-only { display: none; }
   line-height: 1.4;
 }
 
+.try-prompts {
+  flex: 0 0 auto;
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px 8px;
+  font-size: 11px;
+  color: var(--fg);
+  line-height: 1.5;
+}
+.try-prompts li {
+  white-space: nowrap;
+  background: var(--card-warm);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  padding: 2px 9px;
+  color: var(--fg);
+}
+.warn-tiny {
+  color: var(--warn);
+  font-size: 10px;
+  font-style: italic;
+  margin-left: 2px;
+}
+
 /* ---------- scenario overlay (call / maps / emergency) ---------- */
 .scenario-overlay {
   position: fixed;
