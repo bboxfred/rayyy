@@ -218,11 +218,16 @@ body.intro-passed .screen-intro-only { display: none; }
 
 /* ---------- screen 2: status / viewfinder area ---------- */
 .live-status {
-  flex: 1 1 auto;
+  /* Idle: only as tall as needed (about half the previous height).
+     Active: when the viewfinder unhides inside, grow to fill space. */
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-height: 0;
+}
+.live-status:has(.viewfinder-inline:not(.hidden)) {
+  flex: 1 1 auto;
 }
 #status {
   margin: 0;
@@ -302,14 +307,16 @@ body.intro-passed .screen-intro-only { display: none; }
 }
 .talk-braille {
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 28px;
-  letter-spacing: 6px;
+  /* Sized to fit the Talk button width on a 360px-wide phone in a single
+     line. Was wrapping at 28px/6px. */
+  font-size: 22px;
+  letter-spacing: 4px;
   line-height: 1;
-  /* The Talk button has a black foreground (#0a0a0a on warm orange);
-     keep the braille at the same color, slightly heavier weight. */
+  /* Talk button has black-on-warm foreground; matching here. */
   color: #0a0a0a;
   font-weight: 500;
   user-select: none;
+  white-space: nowrap;
 }
 .talk-label {
   font-size: 19px;
@@ -380,25 +387,40 @@ body.intro-passed .screen-intro-only { display: none; }
   line-height: 1.4;
 }
 
-.try-prompts {
-  flex: 0 0 auto;
+/* "Note to judges" sits above the button bar and fills the middle space
+   when the viewfinder isn't active. */
+.judges-note {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 6px 0 2px;
+}
+.judges-note-label {
+  margin: 0;
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-style: italic;
+  text-align: center;
+}
+.judges-pills {
   list-style: none;
   padding: 0;
-  margin: 4px 0 0;
+  margin: 0;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 3px 8px;
+  gap: 4px 6px;
   font-size: 11px;
-  color: var(--fg);
   line-height: 1.5;
 }
-.try-prompts li {
+.judges-pills li {
   white-space: nowrap;
   background: var(--card-warm);
-  border: 1px solid var(--edge);
+  border: 1px solid var(--edge-bright);
   border-radius: 999px;
-  padding: 2px 9px;
+  padding: 3px 10px;
   color: var(--fg);
 }
 .warn-tiny {
