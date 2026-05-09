@@ -27,6 +27,11 @@ const WS_URL = RELAY_BASE.replace(/^http/, "ws") + "/ws";
 
 const INPUT_SAMPLE_RATE = 16000; // Gemini Live wants 16kHz mono PCM16 in
 const OUTPUT_SAMPLE_RATE = 24000; // Gemini Live emits 24kHz mono PCM16 out
+// Jitter buffer: always schedule audio at least this far ahead of the
+// AudioContext clock. Gives the queue tolerance for chunks arriving in
+// bursts instead of evenly. Without this, late chunks underrun and you
+// hear sputtering / pitch wobble on weaker networks.
+const SCHEDULE_LOOKAHEAD_S = 0.15;
 
 // ---------- DOM ----------
 const startBtn = document.getElementById("start-btn");
@@ -159,7 +164,7 @@ function flushAudio(_reason = "interrupt") {
     } catch (_) {}
   }
   activeSources = [];
-  if (outCtx) nextStartTime = outCtx.currentTime;
+  if (outCtx) nextStartTime = outCtx.currentTime + SCHEDULE_LOOKAHEAD_S;
 }
 
 // Decode base64 PCM16, create AudioBuffer at the SOURCE rate (e.g. 24kHz),
@@ -183,7 +188,8 @@ function playAudioChunk(base64Pcm, sourceRate) {
   node.connect(outDest);
 
   const now = outCtx.currentTime;
-  if (nextStartTime < now) nextStartTime = now;
+  const minSchedule = now + SCHEDULE_LOOKAHEAD_S;
+  if (nextStartTime < minSchedule) nextStartTime = minSchedule;
   activeSources.push(node);
   node.onended = () => {
     const i = activeSources.indexOf(node);
