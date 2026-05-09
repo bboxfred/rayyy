@@ -1,18 +1,23 @@
-// Rayyy.ai phone client — Phase 2 voice loop.
+// Rayyy.ai phone client — voice loop.
 //
 // Flow:
 //   Tap to start  -> getUserMedia({audio}) + unlock AudioContext + load /health
 //   Talk          -> open WS to Worker /ws, stream mic PCM16 @ 16kHz
-//                    receive audio frames, decode base64 PCM16 @ 24kHz, resample to
-//                    outCtx.sampleRate, schedule on a MediaStreamDestination ->
-//                    <audio> sink (the only iOS-safe routing).
+//                    receive audio frames, decode base64 PCM16, schedule via
+//                    AudioBufferSourceNodes on outCtx.destination directly.
+//                    Web Audio handles 24kHz -> device-rate conversion.
 //
 // Hard rules baked in here (each one is a real bug we already paid for):
 //   - speechConfig is set server-side. Client never touches it.
-//   - Output goes through MediaStreamDestination -> <audio>, never AudioContext.destination.
-//   - Pre-resample to outCtx.sampleRate; iOS often ignores requested rate.
+//   - Demo runs on USB-C EarPods, so we connect output directly to
+//     outCtx.destination. No MediaStreamDestination + <audio> indirection,
+//     which adds buffering and is iOS Safari's biggest pitch-wobble surface.
+//   - Mic ScriptProcessor sinks to a muted GainNode, NOT inCtx.destination —
+//     two AudioContexts both feeding speakers fight iOS's resampler.
+//   - Flush queued audio sources on serverContent.interrupted (barge-in),
+//     otherwise overlapping turns sound like pitch wobble.
 //   - Reset nextStartTime = outCtx.currentTime on AudioContext resume.
-//   - Block stacked sessions: ignore Talk while ws.readyState === CONNECTING; tear down old WS first.
+//   - Block stacked sessions: ignore Talk while ws.readyState === CONNECTING.
 
 // ---------- config ----------
 const RELAY_BASE = inferRelayBase();
@@ -26,7 +31,6 @@ const startBtn = document.getElementById("start-btn");
 const talkBtn = document.getElementById("talk-btn");
 const statusEl = document.getElementById("status");
 const voiceTag = document.getElementById("voice-tag");
-const audioOut = document.getElementById("audio-out");
 const viewfinderCard = document.getElementById("viewfinder-card");
 const viewfinderCanvas = document.getElementById("viewfinder");
 const viewfinderCaption = document.getElementById("viewfinder-caption");
@@ -35,7 +39,6 @@ const viewfinderCaption = document.getElementById("viewfinder-caption");
 let micStream = null;
 let inCtx = null;
 let outCtx = null;
-let outDest = null; // MediaStreamDestination — iOS-safe sink
 let micProcessor = null;
 let micSource = null;
 let micSink = null; // GainNode at 0 — keeps ScriptProcessor pumping without feeding speakers
@@ -96,15 +99,19 @@ function stopMicCapture() {
   micSource = null;
 }
 
-// ---------- audio: output sink ----------
+// ---------- audio: output sink (HARD RESET, minimal pipeline) ----------
+// Demo hardware uses USB-C EarPods, which bypass the iOS loudspeaker-routing
+// trap entirely. We connect AudioBufferSourceNodes directly to
+// outCtx.destination — no MediaStreamDestination + <audio> indirection,
+// which was the biggest source of pitch/speed wobble. We also stop trying
+// to JS-resample; Web Audio handles rate conversion when AudioBuffer is
+// created at the source rate (24kHz from Gemini Live).
 function ensureOutputContext() {
   if (outCtx && outCtx.state !== "closed") return outCtx;
   outCtx = new (window.AudioContext || window.webkitAudioContext)({
     latencyHint: "playback",
   });
-  outDest = outCtx.createMediaStreamDestination();
-  audioOut.srcObject = outDest.stream;
-  // Reset queue clock on any resume so we don't schedule in the past.
+  // Reset queue clock on resume so we don't schedule in the past.
   outCtx.addEventListener("statechange", () => {
     if (outCtx.state === "running") {
       nextStartTime = outCtx.currentTime;
@@ -118,24 +125,13 @@ async function unlockAudio() {
   try {
     if (outCtx.state === "suspended") await outCtx.resume();
   } catch (_) {}
-  // Lock playback to natural rate — iOS Safari can drift this if media
-  // policy nudges it. Pitch/speed wobble fix.
-  try {
-    audioOut.playbackRate = 1.0;
-    audioOut.preservesPitch = true;
-  } catch (_) {}
-  // Force the <audio> sink to start so iOS commits to media-playback routing.
-  try {
-    await audioOut.play();
-  } catch (_) {}
   nextStartTime = outCtx.currentTime;
 }
 
 // Barge-in flush: stop every scheduled audio source NOW and reset the queue clock.
 // Without this, when the user starts talking, the model's pre-interrupt audio
-// keeps playing in parallel with the next reply -> overlapping voices, pitch
-// wobble, perceived speed-up/slow-down.
-function flushAudio(reason = "interrupt") {
+// keeps playing in parallel with the next reply -> overlapping voices.
+function flushAudio(_reason = "interrupt") {
   for (const node of activeSources) {
     try {
       node.onended = null;
@@ -147,29 +143,25 @@ function flushAudio(reason = "interrupt") {
   if (outCtx) nextStartTime = outCtx.currentTime;
 }
 
-// Decode base64 PCM16, linearly resample to outCtx.sampleRate, schedule.
-// `sourceRate` is taken from the mimeType (e.g. audio/pcm;rate=24000) so we
-// don't assume 24kHz if Gemini ever sends something else.
+// Decode base64 PCM16, create AudioBuffer at the SOURCE rate (e.g. 24kHz),
+// connect to outCtx.destination, schedule. Web Audio handles the rate
+// conversion to outCtx.sampleRate at playback time.
 function playAudioChunk(base64Pcm, sourceRate) {
-  if (!outCtx || !outDest) return;
+  if (!outCtx) return;
   const bytes = base64ToBytes(base64Pcm);
   if (bytes.length < 2) return;
 
-  // PCM16LE -> Float32
   const samples = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength >> 1);
-  const inFloat = new Float32Array(samples.length);
-  for (let i = 0; i < samples.length; i++) inFloat[i] = samples[i] / 32768;
+  const float = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) float[i] = samples[i] / 32768;
 
-  const fromRate = sourceRate || OUTPUT_SAMPLE_RATE;
-  const targetRate = outCtx.sampleRate;
-  const outFloat = linearResample(inFloat, fromRate, targetRate);
-
-  const buffer = outCtx.createBuffer(1, outFloat.length, targetRate);
-  buffer.copyToChannel(outFloat, 0);
+  const rate = sourceRate || OUTPUT_SAMPLE_RATE;
+  const buffer = outCtx.createBuffer(1, float.length, rate);
+  buffer.copyToChannel(float, 0);
 
   const node = outCtx.createBufferSource();
   node.buffer = buffer;
-  node.connect(outDest);
+  node.connect(outCtx.destination);
 
   const now = outCtx.currentTime;
   if (nextStartTime < now) nextStartTime = now;
@@ -188,6 +180,8 @@ function parseRateFromMime(mime) {
   return m ? parseInt(m[1], 10) : null;
 }
 
+// Mic-side resample for outgoing PCM16 (Gemini Live wants 16kHz).
+// Output side no longer JS-resamples — Web Audio handles 24k -> device rate.
 function linearResample(input, fromRate, toRate) {
   if (fromRate === toRate) return input;
   const ratio = fromRate / toRate;
