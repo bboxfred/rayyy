@@ -8,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 GEMINI_MODEL = "gemini-3.1-flash-live-preview"
-GEMINI_VOICE = "Charon"
+GEMINI_VOICE = "Leda"
 
 # Durable Object: family-dashboard pub/sub room.
 # Free plan REQUIRES new_sqlite_classes (not new_classes) — the regular
