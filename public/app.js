@@ -381,11 +381,50 @@ async function dispatchTool(name, _args) {
         day: "numeric",
         month: "long",
       });
+      emitRoom({ kind: "time_check" });
       return { ok: true, time: fmt.format(new Date()), iso: new Date().toISOString() };
+    }
+    case "identify_person_in_front": {
+      // Phase-7 stub. Returning recognized:false makes Rayyy describe generically
+      // and explicitly NOT fabricate a name. The honesty principle in code.
+      emitRoom({ kind: "honesty_event", reason: "no_face_match" });
+      return {
+        recognized: false,
+        reason: "no recognition data loaded yet",
+      };
+    }
+    case "set_voice_provider": {
+      // Phase-6 stub. Honest "not implemented" so Rayyy tells the user the truth
+      // instead of faking compliance with the same Charon voice.
+      emitRoom({ kind: "voice_switch", provider: _args && _args.provider });
+      return {
+        ok: false,
+        message: "voice_switching_not_implemented_yet",
+      };
     }
     default:
       return { ok: false, error: "tool_not_implemented" };
   }
+}
+
+// ---------- room (Phase 5 dashboard pub/sub) ----------
+// Phone is the writer. Privacy: intent triggers only — never verbatim speech.
+let roomWs = null;
+function openRoom() {
+  try {
+    const url = RELAY_BASE.replace(/^http/, "ws") + "/ws/auntie-mei?role=writer";
+    roomWs = new WebSocket(url);
+    roomWs.addEventListener("close", () => {
+      roomWs = null;
+    });
+    roomWs.addEventListener("error", () => {});
+  } catch (_) {}
+}
+function emitRoom(evt) {
+  if (!roomWs || roomWs.readyState !== WebSocket.OPEN) return;
+  try {
+    roomWs.send(JSON.stringify(evt));
+  } catch (_) {}
 }
 
 // ---------- base64 ----------
@@ -409,12 +448,16 @@ function base64ToBytes(b64) {
 }
 
 // ---------- websocket ----------
+let wellbeingTimer = 0;
+let lastSceneEmit = 0;
+
 function openSession() {
   if (isConnecting() || isOpen()) return; // stacked-session guard
   teardownWs("reopen");
 
   setStatus("Connecting…");
   talkBtn.classList.add("live");
+  if (!roomWs || roomWs.readyState !== WebSocket.OPEN) openRoom();
 
   const t0 = performance.now();
   ws = new WebSocket(WS_URL);
@@ -422,6 +465,9 @@ function openSession() {
   ws.addEventListener("open", async () => {
     const dt = Math.round(performance.now() - t0);
     setStatus(`Listening…  (open ${dt}ms)`);
+    emitRoom({ kind: "conversation_start", openMs: dt });
+    if (wellbeingTimer) clearInterval(wellbeingTimer);
+    wellbeingTimer = setInterval(() => emitRoom({ kind: "wellbeing_tick" }), 30000);
     try {
       await startMicCapture();
     } catch (err) {
@@ -440,6 +486,10 @@ function openSession() {
     isTalking = false;
     stopMicCapture();
     stopCamera();
+    if (wellbeingTimer) {
+      clearInterval(wellbeingTimer);
+      wellbeingTimer = 0;
+    }
     if (event.code !== 1000) {
       setStatus(`Closed (${event.code}) ${event.reason || ""}`.trim());
     } else {
@@ -488,7 +538,30 @@ function handleServerMessage(data) {
   }
 
   if (msg?.serverContent?.turnComplete) {
-    // No-op for Phase 2; Phase 5 dashboard will listen here.
+    // Privacy: never forward what was said. Just emit a content-free
+    // "scene_described" trigger if the camera was on this turn (throttled
+    // to one per 5 seconds so a chatty back-and-forth doesn't spam the room).
+    if (camActive) {
+      const now = performance.now();
+      if (now - lastSceneEmit > 5000) {
+        lastSceneEmit = now;
+        emitRoom({ kind: "scene_described" });
+      }
+    }
+  }
+
+  // Input transcription is used LOCALLY only — never forwarded.
+  // Detect "where am I" intent for the dashboard's location pin.
+  const inText = msg?.serverContent?.inputTranscription?.text;
+  if (inText && typeof inText === "string") {
+    const lower = inText.toLowerCase();
+    if (
+      /\bwhere (am i|are we|is this)\b/.test(lower) ||
+      /what (place|venue) is this/.test(lower) ||
+      /what is this place/.test(lower)
+    ) {
+      emitRoom({ kind: "location_query" });
+    }
   }
 }
 
