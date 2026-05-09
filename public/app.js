@@ -38,9 +38,11 @@ let outCtx = null;
 let outDest = null; // MediaStreamDestination — iOS-safe sink
 let micProcessor = null;
 let micSource = null;
+let micSink = null; // GainNode at 0 — keeps ScriptProcessor pumping without feeding speakers
 let ws = null;
 let isTalking = false;
 let nextStartTime = 0;
+let activeSources = []; // BufferSourceNodes currently scheduled — flushed on barge-in
 
 // camera state
 let camStream = null;
@@ -116,6 +118,12 @@ async function unlockAudio() {
   try {
     if (outCtx.state === "suspended") await outCtx.resume();
   } catch (_) {}
+  // Lock playback to natural rate — iOS Safari can drift this if media
+  // policy nudges it. Pitch/speed wobble fix.
+  try {
+    audioOut.playbackRate = 1.0;
+    audioOut.preservesPitch = true;
+  } catch (_) {}
   // Force the <audio> sink to start so iOS commits to media-playback routing.
   try {
     await audioOut.play();
@@ -123,8 +131,26 @@ async function unlockAudio() {
   nextStartTime = outCtx.currentTime;
 }
 
-// Decode base64 PCM16 @ 24kHz, linearly resample to outCtx.sampleRate, schedule.
-function playAudioChunk(base64Pcm) {
+// Barge-in flush: stop every scheduled audio source NOW and reset the queue clock.
+// Without this, when the user starts talking, the model's pre-interrupt audio
+// keeps playing in parallel with the next reply -> overlapping voices, pitch
+// wobble, perceived speed-up/slow-down.
+function flushAudio(reason = "interrupt") {
+  for (const node of activeSources) {
+    try {
+      node.onended = null;
+      node.stop(0);
+      node.disconnect();
+    } catch (_) {}
+  }
+  activeSources = [];
+  if (outCtx) nextStartTime = outCtx.currentTime;
+}
+
+// Decode base64 PCM16, linearly resample to outCtx.sampleRate, schedule.
+// `sourceRate` is taken from the mimeType (e.g. audio/pcm;rate=24000) so we
+// don't assume 24kHz if Gemini ever sends something else.
+function playAudioChunk(base64Pcm, sourceRate) {
   if (!outCtx || !outDest) return;
   const bytes = base64ToBytes(base64Pcm);
   if (bytes.length < 2) return;
@@ -134,9 +160,9 @@ function playAudioChunk(base64Pcm) {
   const inFloat = new Float32Array(samples.length);
   for (let i = 0; i < samples.length; i++) inFloat[i] = samples[i] / 32768;
 
-  // Linear resample 24kHz -> outCtx.sampleRate (whatever iOS actually gave us).
+  const fromRate = sourceRate || OUTPUT_SAMPLE_RATE;
   const targetRate = outCtx.sampleRate;
-  const outFloat = linearResample(inFloat, OUTPUT_SAMPLE_RATE, targetRate);
+  const outFloat = linearResample(inFloat, fromRate, targetRate);
 
   const buffer = outCtx.createBuffer(1, outFloat.length, targetRate);
   buffer.copyToChannel(outFloat, 0);
@@ -147,8 +173,19 @@ function playAudioChunk(base64Pcm) {
 
   const now = outCtx.currentTime;
   if (nextStartTime < now) nextStartTime = now;
+  activeSources.push(node);
+  node.onended = () => {
+    const i = activeSources.indexOf(node);
+    if (i >= 0) activeSources.splice(i, 1);
+  };
   node.start(nextStartTime);
   nextStartTime += buffer.duration;
+}
+
+function parseRateFromMime(mime) {
+  if (!mime) return null;
+  const m = mime.match(/rate=(\d+)/i);
+  return m ? parseInt(m[1], 10) : null;
 }
 
 function linearResample(input, fromRate, toRate) {
@@ -212,7 +249,16 @@ async function startMicCapture() {
   };
 
   micSource.connect(micProcessor);
-  micProcessor.connect(inCtx.destination);
+  // ScriptProcessor needs SOMETHING downstream for onaudioprocess to fire,
+  // but we don't actually want mic going to speakers — that creates a second
+  // AudioContext output competing with outCtx, and on iOS the OS resampler
+  // wobbles when both are active. Sink to a muted gain instead.
+  if (!micSink || micSink.context !== inCtx) {
+    micSink = inCtx.createGain();
+    micSink.gain.value = 0;
+    micSink.connect(inCtx.destination);
+  }
+  micProcessor.connect(micSink);
 }
 
 function floatToPcm16(input) {
@@ -527,14 +573,21 @@ function handleServerMessage(data) {
     return;
   }
 
+  // Barge-in: when the user starts talking, Gemini Live signals interrupted=true.
+  // Stop any audio still queued from the previous turn so we don't play two
+  // streams at once (which sounds like pitch wobble + speed wandering).
+  if (msg?.serverContent?.interrupted) {
+    flushAudio("server interrupt");
+  }
+
   // serverContent.modelTurn.parts[].inlineData.{mimeType, data}
   const parts = msg?.serverContent?.modelTurn?.parts;
   if (Array.isArray(parts)) {
     for (const part of parts) {
       const inline = part.inlineData;
       if (inline && typeof inline.data === "string") {
-        // Gemini Live audio is PCM16 @ 24kHz. mimeType looks like "audio/pcm;rate=24000"
-        playAudioChunk(inline.data);
+        const rate = parseRateFromMime(inline.mimeType);
+        playAudioChunk(inline.data, rate);
       }
     }
   }
