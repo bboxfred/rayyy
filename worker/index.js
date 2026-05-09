@@ -135,11 +135,12 @@ const TOOL_DECLARATIONS = [
   },
 ];
 
-// CORS allowlist — add the production Vercel alias here once known.
+// CORS allowlist. Use the stable production aliases, NOT per-deploy hash URLs.
 const ALLOWED_ORIGINS = new Set([
   "http://localhost:3000",
   "http://localhost:8787",
-  "https://rayyy-smoketest.vercel.app",
+  "https://rayyy-aiengineer.vercel.app",
+  "https://rayyy-smoketest.vercel.app", // legacy alias, kept until DNS settles
 ]);
 
 function corsHeaders(origin) {

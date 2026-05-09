@@ -12,9 +12,9 @@ A multilingual voice + vision AI companion for elderly visually impaired people,
 
 | Surface | URL | Who's it for |
 |---|---|---|
-| **Phone** | [rayyy-smoketest.vercel.app](https://rayyy-smoketest.vercel.app/) | Auntie Mei — voice agent, mic, camera, speaker / earbuds |
-| **Family dashboard** | [rayyy-smoketest.vercel.app/dashboard](https://rayyy-smoketest.vercel.app/dashboard) | Ah-Hua, her daughter — and the projector audience |
-| **Projector backup** | [/dashboard?fake=true](https://rayyy-smoketest.vercel.app/dashboard?fake=true) | 32-second scripted timeline if venue Wi-Fi dies |
+| **Phone** | [rayyy-aiengineer.vercel.app](https://rayyy-aiengineer.vercel.app/) | Auntie Mei — voice agent, mic, camera, speaker / earbuds |
+| **Family dashboard** | [rayyy-aiengineer.vercel.app/dashboard](https://rayyy-aiengineer.vercel.app/dashboard) | Ah-Hua, her daughter — and the projector audience |
+| **Projector backup** | [/dashboard?fake=true](https://rayyy-aiengineer.vercel.app/dashboard?fake=true) | 32-second scripted timeline if venue Wi-Fi dies |
 | **Worker health** | [rayyy-relay.fred-53e.workers.dev/health](https://rayyy-relay.fred-53e.workers.dev/health) | Lock-in confirmation: model + voice |
 
 ---
