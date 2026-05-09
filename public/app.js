@@ -65,7 +65,15 @@ let camAutoOffTimer = 0; // 15s backstop
 let camActive = false;
 const CAM_AUTO_OFF_MS = 15000;
 const CAM_FRAME_INTERVAL_MS = 1000; // 1 fps to Gemini while looking
-const CAM_AUTOFOCUS_PAUSE_MS = 800;
+// Longer than it feels, but worth it: most "first attempt was wrong" reports
+// come from camera firing a frame before autofocus locks. Bumping from 800
+// to 1200 buys the lens enough time to converge.
+const CAM_AUTOFOCUS_PAUSE_MS = 1200;
+// Number of priming frames + spacing between them, sent INSIDE the
+// enable_camera tool handler before the response returns. The model receives
+// several timestamped views of the scene instead of betting on a single one.
+const CAM_PRIMING_FRAMES = 3;
+const CAM_PRIMING_INTERVAL_MS = 300;
 
 // ---------- helpers ----------
 function inferRelayBase() {
@@ -431,8 +439,16 @@ async function dispatchTool(name, _args) {
       }
       // Autofocus / aim-time pause so the first frame isn't garbage.
       await new Promise((r) => setTimeout(r, CAM_AUTOFOCUS_PAUSE_MS));
-      // Force one frame NOW and only resolve once it's been shipped.
-      sendCameraFrame();
+      // Ship multiple priming frames spaced apart so the model has more than
+      // one timestamped view of the scene before it answers. Single-frame
+      // priming was the cause of the "first attempt wrong, second right"
+      // pattern users reported.
+      for (let i = 0; i < CAM_PRIMING_FRAMES; i++) {
+        sendCameraFrame();
+        if (i < CAM_PRIMING_FRAMES - 1) {
+          await new Promise((r) => setTimeout(r, CAM_PRIMING_INTERVAL_MS));
+        }
+      }
       return { ok: true };
     }
     case "disable_camera": {
