@@ -200,10 +200,12 @@ async function startMicCapture() {
         : linearResample(float, realRate, INPUT_SAMPLE_RATE);
     const pcm16 = floatToPcm16(resampled);
     const base64 = bytesToBase64(new Uint8Array(pcm16.buffer));
+    // Gemini Live deprecated realtimeInput.mediaChunks — use the typed
+    // {audio,video,text} fields directly.
     ws.send(
       JSON.stringify({
         realtimeInput: {
-          mediaChunks: [{ mimeType: "audio/pcm;rate=16000", data: base64 }],
+          audio: { mimeType: "audio/pcm;rate=16000", data: base64 },
         },
       })
     );
@@ -309,7 +311,7 @@ function sendCameraFrame() {
   ws.send(
     JSON.stringify({
       realtimeInput: {
-        mediaChunks: [{ mimeType: "image/jpeg", data: base64 }],
+        video: { mimeType: "image/jpeg", data: base64 },
       },
     })
   );

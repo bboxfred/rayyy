@@ -248,10 +248,6 @@ async function handleGeminiProxy(request, env) {
           },
         },
       },
-      // Input transcription is used by the phone LOCALLY for intent matching
-      // (e.g. "where am I" -> dashboard location pulse). The phrase is never
-      // forwarded to the room. See public/app.js handleServerMessage().
-      inputAudioTranscription: {},
       systemInstruction: {
         parts: [{ text: SYSTEM_INSTRUCTION }],
       },
@@ -259,6 +255,11 @@ async function handleGeminiProxy(request, env) {
         { functionDeclarations: TOOL_DECLARATIONS },
         { googleSearch: {} },
       ],
+      // Input transcription is at the TOP level of `setup`, NOT inside
+      // generationConfig — same kind of placement bug as speechConfig (1007).
+      // The phone uses this LOCALLY for intent matching (e.g. "where am I"
+      // -> dashboard location pulse). The phrase is never forwarded to the room.
+      inputAudioTranscription: {},
     },
   };
   upstream.send(JSON.stringify(setupMessage));
@@ -290,13 +291,19 @@ async function handleGeminiProxy(request, env) {
   upstream.addEventListener("message", async (event) => {
     try {
       const data = await decodeFrame(event.data);
+      // Surface any error/text frames in logs (audio is also text-decoded
+      // here as base64 JSON; but anything mentioning "error" is interesting).
+      if (typeof data === "string" && data.length < 600) {
+        console.log("upstream msg:", data);
+      }
       server.send(data);
     } catch (err) {
-      // best-effort; drop unreadable frame
+      console.log("upstream decode err:", String(err && err.message));
     }
   });
 
   upstream.addEventListener("close", (event) => {
+    console.log("upstream close:", event.code, event.reason || "(no reason)");
     try {
       server.close(event.code || 1000, event.reason || "upstream closed");
     } catch (_) {}
