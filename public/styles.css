@@ -1,14 +1,23 @@
-/* Phase 2 — dev-test minimal. The phone is the dev surface; the polished
-   surface is the dashboard (Phase 5). Auntie Mei is blind, so this UI only
-   needs to be tap-targety enough for Freddy to test. */
+/* Phone landing page — judge-facing.
+   Dark theme matches Rayyy's identity (the user is blind, so the phone
+   doesn't need to be friendly to sighted users — but a judge will pick
+   it up and look). Rich content cards explain what they're holding,
+   suggest prompts, link to the dashboard. */
 
 :root {
   --bg: #0a0a0a;
   --fg: #f5e6d3;
+  --fg-muted: #b3a48a;
   --accent: #ff6b35;
+  --accent-soft: rgba(255, 107, 53, 0.15);
+  --accent-deep: #d14e1f;
   --muted: #7a6a55;
   --card: #14110d;
+  --card-warm: #1c1610;
   --edge: #2a241c;
+  --edge-bright: #3a3225;
+  --warn: #e0a92f;
+  --warn-soft: rgba(224, 169, 47, 0.18);
   font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
 }
 
@@ -25,72 +34,253 @@ body {
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
+  line-height: 1.5;
 }
 
 main {
-  max-width: 480px;
+  max-width: 560px;
   margin: 0 auto;
-  padding: max(env(safe-area-inset-top), 24px) 20px
-    max(env(safe-area-inset-bottom), 24px);
+  padding: max(env(safe-area-inset-top), 28px) 20px
+    max(env(safe-area-inset-bottom), 32px);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
   min-height: 100dvh;
 }
 
-header {
+/* Hero */
+.hero {
+  text-align: center;
+  padding: 8px 4px 6px;
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 4px 4px 12px;
-  border-bottom: 1px solid var(--edge);
+  flex-direction: column;
+  gap: 10px;
 }
 
-h1 {
+.braille-logo {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: clamp(36px, 9vw, 56px);
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 10px;
   margin: 0;
-  font-size: 28px;
-  letter-spacing: -0.02em;
+  line-height: 1;
+  user-select: none;
+}
+
+.tagline {
+  margin: 0;
+  font-family: "Fraunces", Georgia, serif;
+  font-size: clamp(18px, 4.5vw, 22px);
+  color: var(--fg-muted);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.tagline .ink {
   color: var(--fg);
 }
 
 .voice-tag {
-  margin: 0;
-  font-size: 12px;
+  margin: 4px 0 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
 }
 
+/* Cards */
 .card {
   background: var(--card);
   border: 1px solid var(--edge);
-  border-radius: 14px;
-  padding: 18px 18px 16px;
+  border-radius: 16px;
+  padding: 20px 18px;
+  position: relative;
+}
+
+.card h2 {
+  margin: 0 0 8px;
+  font-family: "Fraunges", Georgia, serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+
+.card .lead {
+  margin: 0 0 12px;
+  font-size: 15px;
+  color: var(--fg);
+}
+
+.card .meta {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--fg-muted);
+  padding-top: 12px;
+  border-top: 1px dashed var(--edge);
+}
+
+.card.intro {
+  background: linear-gradient(180deg, var(--card-warm) 0%, var(--card) 100%);
+}
+
+/* Product illustration / photo */
+.product {
+  margin-top: 16px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--edge);
+  background: #06060a;
+}
+
+.product img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 280px;
+  object-fit: cover;
+}
+
+.product-fallback {
+  display: none;
+  padding: 28px 18px;
+  text-align: center;
+}
+
+.product-fallback.show {
+  display: block;
+}
+
+.product-emoji {
+  font-size: 44px;
+  letter-spacing: 8px;
+}
+
+.product-emoji span {
+  color: var(--muted);
+  margin: 0 6px;
+}
+
+.product-caption {
+  margin: 8px 0 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--fg-muted);
+  letter-spacing: 0.04em;
+}
+
+/* Try-it list */
+.try h2 {
+  font-size: 22px;
+}
+
+.try-list {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.try-list li {
+  display: flex;
+  gap: 12px;
+  padding: 12px 12px;
+  background: var(--bg);
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+}
+
+.try-num {
+  flex: 0 0 auto;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.try-list li > div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.try-prompt {
+  font-size: 15px;
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.try-note {
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.45;
+}
+
+.try-note.warn {
+  color: var(--warn);
+}
+
+.try-note.warn strong {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.try-tip {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(255, 107, 53, 0.35);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--fg);
+  line-height: 1.5;
+}
+
+/* Status */
+.status-card {
+  padding: 16px 18px;
+  background: var(--card-warm);
 }
 
 #status {
-  margin: 0 0 6px;
-  font-size: 18px;
+  margin: 0 0 4px;
+  font-size: 17px;
   line-height: 1.35;
+  color: var(--fg);
+  font-weight: 500;
 }
 
 .hint {
   margin: 0;
-  color: var(--muted);
-  font-size: 13px;
+  color: var(--fg-muted);
+  font-size: 12px;
   line-height: 1.4;
 }
 
+/* Controls */
 .controls {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: auto;
+  gap: 10px;
+  margin-top: 4px;
 }
 
 button.big {
   appearance: none;
   -webkit-appearance: none;
-  border: 1px solid var(--edge);
+  border: 1px solid var(--edge-bright);
   background: var(--card);
   color: var(--fg);
   border-radius: 14px;
@@ -101,6 +291,7 @@ button.big {
   cursor: pointer;
   transition: transform 80ms ease, background 120ms ease, border-color 120ms ease;
   touch-action: manipulation;
+  font-family: inherit;
 }
 
 button.big:active:not(:disabled) {
@@ -138,6 +329,7 @@ button.big.primary.live {
   }
 }
 
+/* Viewfinder */
 .viewfinder-card {
   padding: 14px;
   display: flex;
@@ -164,6 +356,62 @@ button.big.primary.live {
   margin: 2px 4px 0;
 }
 
+/* Footer */
+.page-footer {
+  margin-top: 14px;
+  padding: 18px 4px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  text-align: center;
+}
+
+.dashboard-link {
+  display: inline-block;
+  padding: 10px 16px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 999px;
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.dashboard-link:hover,
+.dashboard-link:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.brand {
+  margin: 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.brand a {
+  color: var(--fg-muted);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--edge-bright);
+  margin-left: 6px;
+  padding-bottom: 1px;
+}
+
+.brand a:hover {
+  color: var(--accent);
+}
+
+/* Once the user taps Start, hide the before-start cards to clear the
+   stage for the live conversation. The status card + controls + viewfinder
+   become the focus. */
+body.session-active .before-start {
+  display: none;
+}
+
+/* Audio sink */
 #audio-out {
   width: 0;
   height: 0;

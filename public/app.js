@@ -877,6 +877,9 @@ async function onStart() {
 
   startBtn.style.display = "none";
   talkBtn.disabled = false;
+  // Hide the judge-facing intro/try-it cards once a session is live so the
+  // status + controls + viewfinder become the focus.
+  document.body.classList.add("session-active");
   setStatus("Ready. Tap Talk.");
 }
 
