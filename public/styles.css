@@ -1,8 +1,7 @@
-/* Phone landing page — judge-facing.
-   Dark theme matches Rayyy's identity (the user is blind, so the phone
-   doesn't need to be friendly to sighted users — but a judge will pick
-   it up and look). Rich content cards explain what they're holding,
-   suggest prompts, link to the dashboard. */
+/* Phone — judge-facing UI.
+   Two screens, neither one scrolls. Both fit in a single iPhone viewport.
+   Bottom bar holds the Talk button (left) and 3 quick-action buttons
+   (right), snug to the bottom safe-area inset. */
 
 :root {
   --bg: #0a0a0a;
@@ -18,250 +17,212 @@
   --edge-bright: #3a3225;
   --warn: #e0a92f;
   --warn-soft: rgba(224, 169, 47, 0.18);
+  --danger: #e2453a;
+  --danger-soft: rgba(226, 69, 58, 0.18);
+  --mint: #2eaa6e;
   font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
-html,
-body {
+html, body {
   margin: 0;
   padding: 0;
   background: var(--bg);
   color: var(--fg);
-  min-height: 100dvh;
+  height: 100dvh;
+  width: 100%;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
   line-height: 1.5;
+  overflow: hidden; /* lock scroll on both screens */
 }
 
 main {
-  max-width: 560px;
-  margin: 0 auto;
-  padding: max(env(safe-area-inset-top), 28px) 20px
-    max(env(safe-area-inset-bottom), 32px);
+  height: 100dvh;
+  width: 100%;
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  min-height: 100dvh;
 }
 
-/* Hero */
+/* ---------- screens ---------- */
+.screen {
+  display: none;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  padding: max(env(safe-area-inset-top), 22px) 18px max(env(safe-area-inset-bottom), 18px);
+  gap: 14px;
+  overflow: hidden;
+}
+.screen-intro {
+  display: flex;
+  justify-content: flex-start;
+}
+.screen-live { display: none; }
+
+body.intro-passed .screen-intro { display: none; }
+body.intro-passed .screen-live { display: flex; }
+body.intro-passed .screen-intro-only { display: none; }
+
+/* ---------- hero ---------- */
 .hero {
   text-align: center;
-  padding: 8px 4px 6px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
+  flex: 0 0 auto;
 }
-
+.hero-small {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  gap: 12px;
+}
 .braille-logo {
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: clamp(36px, 9vw, 56px);
+  font-size: clamp(34px, 8vw, 48px);
   font-weight: 500;
   color: var(--accent);
-  letter-spacing: 10px;
+  letter-spacing: 9px;
   margin: 0;
   line-height: 1;
   user-select: none;
 }
-
+.braille-logo.small {
+  font-size: 22px;
+  letter-spacing: 6px;
+}
 .tagline {
-  margin: 0;
+  margin: 6px 0 0;
   font-family: "Fraunces", Georgia, serif;
-  font-size: clamp(18px, 4.5vw, 22px);
-  color: var(--fg-muted);
-  font-weight: 500;
-  letter-spacing: -0.01em;
-}
-
-.tagline .ink {
+  font-size: clamp(22px, 5.6vw, 30px);
+  line-height: 1.18;
   color: var(--fg);
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
-
+.subtagline {
+  margin: 4px auto 0;
+  font-size: clamp(13px, 3.4vw, 15px);
+  line-height: 1.5;
+  color: var(--fg-muted);
+  max-width: 44ch;
+}
+.subtagline strong { color: var(--accent); font-weight: 600; }
 .voice-tag {
-  margin: 4px 0 0;
+  margin: 0;
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 11px;
   color: var(--muted);
   letter-spacing: 0.04em;
 }
 
-/* Cards */
+/* ---------- cards (screen 1 intro card) ---------- */
 .card {
   background: var(--card);
   border: 1px solid var(--edge);
   border-radius: 16px;
-  padding: 20px 18px;
-  position: relative;
+  padding: 16px 16px;
 }
-
 .card h2 {
-  margin: 0 0 8px;
-  font-family: "Fraunges", Georgia, serif;
-  font-size: 20px;
+  margin: 0 0 6px;
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 19px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--fg);
 }
-
 .card .lead {
-  margin: 0 0 12px;
-  font-size: 15px;
+  margin: 0 0 8px;
+  font-size: 14px;
   color: var(--fg);
+  line-height: 1.5;
 }
-
 .card .meta {
-  margin: 12px 0 0;
-  font-size: 13px;
+  margin: 8px 0 10px;
+  font-size: 12px;
   color: var(--fg-muted);
-  padding-top: 12px;
+  padding-top: 8px;
   border-top: 1px dashed var(--edge);
+  line-height: 1.5;
 }
-
 .card.intro {
   background: linear-gradient(180deg, var(--card-warm) 0%, var(--card) 100%);
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-/* Product illustration / photo */
+/* product photo / fallback */
 .product {
-  margin-top: 16px;
-  border-radius: 12px;
+  margin-top: 6px;
+  border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--edge);
   background: #06060a;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-
 .product img {
   display: block;
   width: 100%;
-  height: auto;
-  max-height: 280px;
+  height: 100%;
+  max-height: 100%;
   object-fit: cover;
 }
-
 .product-fallback {
   display: none;
-  padding: 28px 18px;
+  padding: 18px 14px;
   text-align: center;
 }
-
-.product-fallback.show {
-  display: block;
-}
-
+.product-fallback.show { display: block; }
 .product-emoji {
-  font-size: 44px;
+  font-size: 36px;
   letter-spacing: 8px;
 }
-
-.product-emoji span {
-  color: var(--muted);
-  margin: 0 6px;
-}
-
+.product-emoji span { color: var(--muted); margin: 0 6px; }
 .product-caption {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--fg-muted);
   letter-spacing: 0.04em;
 }
 
-/* Try-it list */
-.try h2 {
-  font-size: 22px;
-}
-
-.try-list {
-  list-style: none;
-  padding: 0;
-  margin: 6px 0 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.try-list li {
-  display: flex;
-  gap: 12px;
-  padding: 12px 12px;
-  background: var(--bg);
-  border: 1px solid var(--edge);
-  border-radius: 12px;
-}
-
-.try-num {
+/* Get started button (screen 1) */
+.continue-btn {
+  margin-top: 4px;
   flex: 0 0 auto;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 12px;
-  font-weight: 600;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--accent-soft);
-  color: var(--accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 1px;
 }
+.continue-btn .arrow {
+  display: inline-block;
+  transition: transform 200ms ease;
+}
+.continue-btn:hover .arrow,
+.continue-btn:focus-visible .arrow { transform: translateX(4px); }
 
-.try-list li > div {
-  flex: 1;
+/* ---------- screen 2: status / viewfinder area ---------- */
+.live-status {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
+  min-height: 0;
 }
-
-.try-prompt {
-  font-size: 15px;
-  color: var(--fg);
-  font-weight: 500;
-}
-
-.try-note {
-  font-size: 12px;
-  color: var(--fg-muted);
-  line-height: 1.45;
-}
-
-.try-note.warn {
-  color: var(--warn);
-}
-
-.try-note.warn strong {
-  color: var(--warn);
-  font-weight: 600;
-}
-
-.try-tip {
-  margin: 0;
-  padding: 12px 14px;
-  background: var(--accent-soft);
-  border: 1px solid rgba(255, 107, 53, 0.35);
-  border-radius: 10px;
-  font-size: 13px;
-  color: var(--fg);
-  line-height: 1.5;
-}
-
-/* Status */
-.status-card {
-  padding: 16px 18px;
-  background: var(--card-warm);
-}
-
 #status {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 17px;
   line-height: 1.35;
   color: var(--fg);
   font-weight: 500;
 }
-
 .hint {
   margin: 0;
   color: var(--fg-muted);
@@ -269,14 +230,247 @@ main {
   line-height: 1.4;
 }
 
-/* Controls */
-.controls {
+/* Viewfinder lives inside the status card; takes available space when active */
+.viewfinder-inline {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 6px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 4px;
+  gap: 6px;
+}
+.viewfinder-inline.hidden { display: none; }
+#viewfinder {
+  width: 100%;
+  height: 100%;
+  flex: 1 1 auto;
+  min-height: 140px;
+  background: #000;
+  border-radius: 10px;
+  display: block;
+  object-fit: cover;
+  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.45);
 }
 
+/* ---------- bottom bar ---------- */
+.bottom-bar {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 10px;
+  padding-top: 6px;
+}
+.talk-big {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 1.4 1 0;
+  min-height: 156px;
+  background: var(--accent);
+  color: #0a0a0a;
+  border: none;
+  border-radius: 22px;
+  font-family: inherit;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 80ms ease, box-shadow 200ms ease;
+  touch-action: manipulation;
+  position: relative;
+}
+.talk-big:active:not(:disabled) { transform: scale(0.97); }
+.talk-big:disabled { opacity: 0.5; cursor: not-allowed; }
+.talk-big.live {
+  box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.55);
+  animation: pulse 1.6s ease-out infinite;
+}
+.talk-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+.talk-label {
+  font-size: 18px;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.55); }
+  100% { box-shadow: 0 0 0 22px rgba(255, 107, 53, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .talk-big.live { animation: none; }
+}
+
+.action-stack {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 156px;
+}
+.action-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 1 1 0;
+  background: var(--card);
+  border: 1px solid var(--edge-bright);
+  color: var(--fg);
+  border-radius: 14px;
+  padding: 6px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: transform 80ms ease, background 160ms ease, border-color 160ms ease;
+  touch-action: manipulation;
+}
+.action-btn:active { transform: scale(0.97); }
+.action-btn:hover,
+.action-btn:focus-visible { border-color: var(--accent); background: var(--card-warm); }
+.action-btn.emergency {
+  background: rgba(226, 69, 58, 0.12);
+  border-color: rgba(226, 69, 58, 0.55);
+  color: #f3a59f;
+}
+.action-btn.emergency:hover,
+.action-btn.emergency:focus-visible {
+  background: rgba(226, 69, 58, 0.22);
+  border-color: var(--danger);
+  color: #fff;
+}
+.action-emoji { font-size: 18px; line-height: 1; }
+.action-label { font-size: 13px; }
+
+/* ---------- scenario overlay (call / maps / emergency) ---------- */
+.scenario-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 7, 5, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+}
+.scenario-overlay.show { display: flex; }
+.scenario-overlay.emergency .scenario-inner {
+  border-color: var(--danger);
+  box-shadow: 0 0 60px rgba(226, 69, 58, 0.35);
+}
+.scenario-overlay.emergency .scenario-icon { color: var(--danger); }
+.scenario-inner {
+  background: var(--card);
+  border: 1px solid var(--edge-bright);
+  border-radius: 22px;
+  padding: 32px 24px 24px;
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.scenario-icon {
+  font-size: 60px;
+  line-height: 1;
+  color: var(--accent);
+  animation: scenario-pulse 1.4s ease-out infinite;
+}
+@keyframes scenario-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+.scenario-title {
+  margin: 0;
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+.scenario-sub {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+  min-height: 21px;
+}
+.scenario-bars {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+}
+.scenario-bars span {
+  width: 6px;
+  height: 18px;
+  border-radius: 3px;
+  background: var(--accent);
+  animation: bars 1.1s ease-in-out infinite;
+}
+.scenario-bars span:nth-child(2) { animation-delay: 0.15s; }
+.scenario-bars span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes bars {
+  0%, 100% { transform: scaleY(0.5); opacity: 0.5; }
+  50% { transform: scaleY(1.2); opacity: 1; }
+}
+.scenario-overlay.emergency .scenario-bars span { background: var(--danger); }
+.scenario-close {
+  margin-top: 10px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--card-warm);
+  color: var(--fg);
+  border: 1px solid var(--edge-bright);
+  border-radius: 999px;
+  padding: 10px 22px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* ---------- footer ---------- */
+.page-footer {
+  position: fixed;
+  bottom: max(env(safe-area-inset-bottom), 12px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  pointer-events: none;
+}
+.page-footer * { pointer-events: auto; }
+.dashboard-link {
+  display: none; /* hidden on screen 1 since we have the Continue button */
+}
+.brand {
+  margin: 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--muted);
+}
+.brand a {
+  color: var(--fg-muted);
+  text-decoration: none;
+  margin-left: 6px;
+  border-bottom: 1px dotted var(--edge-bright);
+}
+.brand a:hover { color: var(--accent); }
+
+/* ---------- shared ---------- */
 button.big {
   appearance: none;
   -webkit-appearance: none;
@@ -284,192 +478,21 @@ button.big {
   background: var(--card);
   color: var(--fg);
   border-radius: 14px;
-  padding: 22px 18px;
-  font-size: 20px;
+  padding: 18px 18px;
+  font-size: 18px;
   font-weight: 600;
-  letter-spacing: -0.01em;
   cursor: pointer;
-  transition: transform 80ms ease, background 120ms ease, border-color 120ms ease;
-  touch-action: manipulation;
   font-family: inherit;
+  width: 100%;
+  transition: transform 80ms ease, background 160ms ease, border-color 160ms ease;
 }
-
-button.big:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-button.big:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
+button.big:active:not(:disabled) { transform: scale(0.98); }
 button.big.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: #0a0a0a;
 }
 
-button.big.primary.live {
-  box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.55);
-  animation: pulse 1.6s ease-out infinite;
-}
-
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.55);
-  }
-  100% {
-    box-shadow: 0 0 0 18px rgba(255, 107, 53, 0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  button.big.primary.live {
-    animation: none;
-  }
-}
-
-/* Viewfinder */
-.viewfinder-card {
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.viewfinder-card.hidden {
-  display: none;
-}
-
-#viewfinder {
-  width: 100%;
-  height: auto;
-  aspect-ratio: 4 / 3;
-  background: #000;
-  border-radius: 10px;
-  display: block;
-  /* When camera is active a soft warm ring confirms Rayyy is "looking". */
-  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.45);
-}
-
-#viewfinder-caption {
-  margin: 2px 4px 0;
-}
-
-/* Footer */
-.page-footer {
-  margin-top: 14px;
-  padding: 18px 4px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: center;
-  text-align: center;
-}
-
-.dashboard-link {
-  display: inline-block;
-  padding: 10px 16px;
-  border: 1px solid var(--edge-bright);
-  border-radius: 999px;
-  color: var(--fg);
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: 500;
-  transition: border-color 160ms ease, background 160ms ease;
-}
-
-.dashboard-link:hover,
-.dashboard-link:focus-visible {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.brand {
-  margin: 0;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.brand a {
-  color: var(--fg-muted);
-  text-decoration: none;
-  border-bottom: 1px dotted var(--edge-bright);
-  margin-left: 6px;
-  padding-bottom: 1px;
-}
-
-.brand a:hover {
-  color: var(--accent);
-}
-
-/* Two-screen flow.
-   Screen 1 (.section-intro): hero + "What is this?" + Get-started button.
-   Screen 2 (.section-try): voice tag + try-it list + status + controls.
-   Body class .intro-passed swaps which screen is visible. */
-.section-intro {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-.section-try {
-  display: none;
-  flex-direction: column;
-  gap: 18px;
-}
-body.intro-passed .section-intro {
-  display: none;
-}
-body.intro-passed .section-try {
-  display: flex;
-}
-
-.continue-btn {
-  margin-top: 4px;
-  font-family: inherit;
-}
-.continue-btn .arrow {
-  display: inline-block;
-  transition: transform 200ms ease;
-}
-.continue-btn:hover .arrow,
-.continue-btn:focus-visible .arrow {
-  transform: translateX(4px);
-}
-
-/* Bigger, denser tagline pair for the new hero. */
-.tagline {
-  margin: 0;
-  font-family: "Fraunces", Georgia, serif;
-  font-size: clamp(26px, 6.5vw, 36px);
-  line-height: 1.15;
-  color: var(--fg);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-.subtagline {
-  margin: 4px 0 0;
-  font-size: clamp(14px, 3.6vw, 16px);
-  line-height: 1.5;
-  color: var(--fg-muted);
-  max-width: 46ch;
-  margin-left: auto;
-  margin-right: auto;
-}
-.subtagline strong {
-  color: var(--accent);
-  font-weight: 600;
-}
-
-/* Once the user taps Start, hide the before-start cards to clear the
-   stage for the live conversation. The status card + controls + viewfinder
-   become the focus. */
-body.session-active .before-start {
-  display: none;
-}
-
-/* Audio sink */
 #audio-out {
   width: 0;
   height: 0;

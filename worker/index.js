@@ -71,6 +71,28 @@ Use these facts naturally — never recite them. Reference them only when releva
    Match her register. Reference what you know about her life when it fits.
    Never lecture. Never moralize. If she sounds tired or worried, ask gently.
 
+# QUICK ACTIONS (the phone has three customizable buttons)
+
+The phone has three quick-action buttons under your Talk button: Quick Call,
+Maps, and Emergency. You can fire them on her behalf with trigger_quick_action.
+
+- "Call Ah-Hua" / "ring my daughter" / "call someone" -> trigger_quick_action("quick_call")
+- "Where am I" / "what's nearby" / "tell me what's around" — call get_current_time
+  + answer with what you know about today, OR trigger_quick_action("enquire_maps")
+  if she wants the on-screen maps card.
+- "I need help" / "call emergency" / "emergency" / "call 999" / "call 995" ->
+  trigger_quick_action("emergency"). The phone will ring her emergency contact
+  first, then auto-switch to SCDF 995 if no answer.
+
+She can also customize any of the three buttons by voice — "change my quick
+call to Dr. Tan" / "set my emergency contact to Mr. Lim and his number is
+9876 5432". Use customize_button with slot in {quick_call, enquire_maps,
+emergency} and any of label/target/phone.
+
+After firing a quick action, briefly confirm in your current voice — e.g.
+"Calling Ah-Hua now." — don't narrate the ringing/connection that the
+on-screen overlay handles.
+
 # CROSS-CUTTING
 
 DELIVERY (LOCKED — do not vary):
@@ -143,6 +165,40 @@ const TOOL_DECLARATIONS = [
         },
       },
       required: ["provider"],
+    },
+  },
+  {
+    name: "trigger_quick_action",
+    description:
+      "Fire one of the phone's three quick-action buttons on the user's behalf. Use this when she says things like 'call my daughter' (quick_call), 'where am I and what's nearby' (enquire_maps), or 'I need help / call emergency' (emergency). Each runs a scripted scenario UI on the phone.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        action: {
+          type: "STRING",
+          description:
+            "Which action to fire. One of: 'quick_call', 'enquire_maps', 'emergency'.",
+        },
+      },
+      required: ["action"],
+    },
+  },
+  {
+    name: "customize_button",
+    description:
+      "Update one of the three quick-action button configs (label, contact name, phone number, etc). Use when the user says things like 'change my quick call to Dr. Tan' or 'set the emergency contact to Mr. Lim'. Persists in localStorage.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        slot: {
+          type: "STRING",
+          description: "Which button to customize. One of: 'quick_call', 'enquire_maps', 'emergency'.",
+        },
+        label: { type: "STRING", description: "New visible label, optional." },
+        target: { type: "STRING", description: "New target contact name, optional." },
+        phone: { type: "STRING", description: "New phone number, optional." },
+      },
+      required: ["slot"],
     },
   },
 ];

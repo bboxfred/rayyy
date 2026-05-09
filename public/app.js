@@ -35,7 +35,7 @@ const OUTPUT_SAMPLE_RATE = 24000; // Gemini Live emits 24kHz mono PCM16 out
 const SCHEDULE_LOOKAHEAD_S = 0.7;
 
 // ---------- DOM ----------
-const startBtn = document.getElementById("start-btn");
+const startBtn = document.getElementById("start-btn"); // optional; new layout doesn't have one
 const talkBtn = document.getElementById("talk-btn");
 const statusEl = document.getElementById("status");
 const voiceTag = document.getElementById("voice-tag");
@@ -43,6 +43,14 @@ const audioOut = document.getElementById("audio-out");
 const viewfinderCard = document.getElementById("viewfinder-card");
 const viewfinderCanvas = document.getElementById("viewfinder");
 const viewfinderCaption = document.getElementById("viewfinder-caption");
+const actionCallBtn = document.getElementById("action-call");
+const actionMapsBtn = document.getElementById("action-maps");
+const actionEmergencyBtn = document.getElementById("action-emergency");
+const scenarioOverlay = document.getElementById("scenario-overlay");
+const scenarioIcon = document.getElementById("scenario-icon");
+const scenarioTitle = document.getElementById("scenario-title");
+const scenarioSub = document.getElementById("scenario-sub");
+const scenarioCloseBtn = document.getElementById("scenario-close");
 
 // ---------- state ----------
 let micStream = null;
@@ -727,6 +735,41 @@ async function dispatchTool(name, _args) {
         };
       }
     }
+    case "trigger_quick_action": {
+      const action = ((_args && _args.action) || "").toLowerCase();
+      switch (action) {
+        case "quick_call":
+          runQuickCall();
+          return { ok: true, action };
+        case "enquire_maps":
+          runEnquireMaps();
+          return { ok: true, action };
+        case "emergency":
+          runEmergency();
+          return { ok: true, action };
+        default:
+          return { ok: false, error: "unknown_action" };
+      }
+    }
+    case "customize_button": {
+      const slot = ((_args && _args.slot) || "").toLowerCase();
+      if (!actionConfig[slot]) return { ok: false, error: "unknown_slot" };
+      const next = { ...actionConfig[slot] };
+      if (_args.label) next.label = _args.label;
+      if (_args.target) next.target = _args.target;
+      if (_args.phone) next.phone = _args.phone;
+      // For emergency, allow updating primary/fallback fields too.
+      if (slot === "emergency") {
+        if (_args.target) next.primary = _args.target;
+        if (_args.phone) next.primary_phone = _args.phone;
+      }
+      actionConfig[slot] = next;
+      saveActionConfig(actionConfig);
+      // Refresh the visible label on the button.
+      const btn = document.querySelector(`[data-action="${slot}"] .action-label`);
+      if (btn && next.label) btn.textContent = next.label;
+      return { ok: true, slot, config: next };
+    }
     case "set_voice_provider": {
       // Phase 7 — REAL switch. Schedule the swap to happen after the current
       // turn's acknowledgement audio finishes playing. Then teardownWs() and
@@ -826,7 +869,7 @@ function openSession() {
 
   ws.addEventListener("close", (event) => {
     talkBtn.classList.remove("live");
-    talkBtn.textContent = "Talk";
+    setTalkLabel("Talk");
     isTalking = false;
     stopMicCapture();
     stopCamera();
@@ -991,7 +1034,15 @@ async function toggleTalk() {
   await unlockAudio();
   openSession();
   isTalking = true;
-  talkBtn.textContent = "Stop";
+  setTalkLabel("Stop");
+}
+
+// The new talk button has an icon + label span; setTalkLabel() updates only
+// the label so we don't clobber the icon.
+function setTalkLabel(text) {
+  const labelEl = talkBtn.querySelector(".talk-label");
+  if (labelEl) labelEl.textContent = text;
+  else talkBtn.textContent = text;
 }
 
 // ---------- start (permissions + warmup) ----------
@@ -1038,8 +1089,224 @@ async function onStart() {
   });
 }
 
-startBtn.addEventListener("click", onStart);
-talkBtn.addEventListener("click", toggleTalk);
+// ---------- quick-action scenarios ----------
+// Each action is a customizable scripted flow. Default config is hardcoded
+// here; AI tool calls (and future verbal customization) update localStorage.
+const ACTION_CONFIG_KEY = "rayyy_action_config_v1";
+const DEFAULT_ACTION_CONFIG = {
+  quick_call: { label: "Quick Call", target: "Ah-Hua", phone: "9123 4567" },
+  enquire_maps: { label: "Maps", target: "current location" },
+  emergency: {
+    label: "Emergency",
+    primary: "Ah-Hua",
+    primary_phone: "9123 4567",
+    fallback: "SCDF 995",
+    ring_seconds: 5,
+  },
+};
+function loadActionConfig() {
+  try {
+    const raw = localStorage.getItem(ACTION_CONFIG_KEY);
+    if (!raw) return { ...DEFAULT_ACTION_CONFIG };
+    const parsed = JSON.parse(raw);
+    return { ...DEFAULT_ACTION_CONFIG, ...parsed };
+  } catch (_) {
+    return { ...DEFAULT_ACTION_CONFIG };
+  }
+}
+function saveActionConfig(cfg) {
+  try {
+    localStorage.setItem(ACTION_CONFIG_KEY, JSON.stringify(cfg));
+  } catch (_) {}
+}
+let actionConfig = loadActionConfig();
+
+let scenarioActive = false;
+let scenarioTimers = [];
+function clearScenarioTimers() {
+  for (const t of scenarioTimers) clearTimeout(t);
+  scenarioTimers = [];
+}
+function showScenario({ icon, title, sub, emergency = false }) {
+  scenarioIcon.textContent = icon;
+  scenarioTitle.textContent = title;
+  scenarioSub.textContent = sub || "";
+  scenarioOverlay.classList.toggle("emergency", !!emergency);
+  scenarioOverlay.classList.add("show");
+  scenarioActive = true;
+}
+function updateScenario({ title, sub, icon }) {
+  if (icon) scenarioIcon.textContent = icon;
+  if (title) scenarioTitle.textContent = title;
+  if (sub !== undefined) scenarioSub.textContent = sub;
+}
+function hideScenario() {
+  scenarioOverlay.classList.remove("show");
+  scenarioOverlay.classList.remove("emergency");
+  scenarioActive = false;
+  clearScenarioTimers();
+}
+scenarioCloseBtn?.addEventListener("click", hideScenario);
+
+async function runQuickCall() {
+  const cfg = actionConfig.quick_call;
+  showScenario({
+    icon: "📞",
+    title: `Calling ${cfg.target}…`,
+    sub: cfg.phone || "",
+  });
+  emitRoom({ kind: "voice_switch", provider: "quick_call", ok: true });
+  // ringing -> connected -> ended (mocked)
+  scenarioTimers.push(
+    setTimeout(() => {
+      if (!scenarioActive) return;
+      updateScenario({
+        icon: "✅",
+        title: `Connected — ${cfg.target}`,
+        sub: "Talk to her now. (demo: not real telephony)",
+      });
+    }, 2400)
+  );
+  scenarioTimers.push(
+    setTimeout(() => {
+      if (!scenarioActive) return;
+      updateScenario({ icon: "🔚", title: "Call ended", sub: "" });
+      scenarioTimers.push(setTimeout(hideScenario, 1500));
+    }, 7400)
+  );
+}
+
+async function runEnquireMaps() {
+  // Open a session if needed, then inject a synthetic user prompt asking
+  // about location + nearby places. Rayyy answers with its real grounding
+  // (today's situation + googleSearch).
+  if (!isOpen()) {
+    if (!micStream) {
+      try {
+        await ensurePermissionsAndUnlock();
+      } catch (err) {
+        setStatus("Mic permission needed for Maps.");
+        return;
+      }
+    }
+    await unlockAudio();
+    openSession();
+    await waitFor(() => isOpen(), 4000);
+  }
+  if (!isOpen()) {
+    setStatus("Couldn't connect for Maps.");
+    return;
+  }
+  const prompt =
+    "Tell me where I am right now and what's around me — venue name, " +
+    "what direction the exit is, anything useful for a blind person here.";
+  try {
+    ws.send(
+      JSON.stringify({
+        clientContent: {
+          turns: [{ role: "user", parts: [{ text: prompt }] }],
+          turnComplete: true,
+        },
+      })
+    );
+    setStatus("Asking Rayyy about your location…");
+    emitRoom({ kind: "location_query" });
+  } catch (_) {}
+}
+
+async function runEmergency() {
+  const cfg = actionConfig.emergency;
+  showScenario({
+    icon: "🚨",
+    title: `Calling ${cfg.primary}…`,
+    sub: `Emergency contact · ${cfg.primary_phone || ""}`,
+    emergency: true,
+  });
+  emitRoom({ kind: "voice_switch", provider: "emergency_call", ok: true });
+  // primary contact rings, no answer, switch to 999/995
+  scenarioTimers.push(
+    setTimeout(() => {
+      if (!scenarioActive) return;
+      updateScenario({
+        icon: "⏱",
+        title: `${cfg.primary} not answering…`,
+        sub: "Switching to emergency services.",
+      });
+    }, (cfg.ring_seconds || 5) * 1000)
+  );
+  scenarioTimers.push(
+    setTimeout(() => {
+      if (!scenarioActive) return;
+      updateScenario({
+        icon: "🚑",
+        title: `Calling ${cfg.fallback}…`,
+        sub: "Singapore Civil Defence Force",
+      });
+    }, ((cfg.ring_seconds || 5) + 1.4) * 1000)
+  );
+  scenarioTimers.push(
+    setTimeout(() => {
+      if (!scenarioActive) return;
+      updateScenario({
+        icon: "✅",
+        title: "Connected to emergency services",
+        sub: "Help is on the way. Stay where you are.",
+      });
+    }, ((cfg.ring_seconds || 5) + 4.4) * 1000)
+  );
+}
+
+// Permissions + audio unlock — called from the Talk button on first use
+// (the new layout doesn't have a separate Tap-to-Start button).
+async function ensurePermissionsAndUnlock() {
+  if (!micStream) {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1,
+      },
+    });
+  }
+  await unlockAudio();
+  // Voice tag
+  try {
+    const r = await fetch(RELAY_BASE + "/health", { cache: "no-store" });
+    const j = await r.json();
+    updateVoiceTag(j);
+  } catch (_) {
+    voiceTag.textContent = "Voice: relay unreachable";
+  }
+  // Preload face matching weights in the background
+  ensureFaceModels().catch(() => {});
+  document.body.classList.add("session-active");
+}
+
+// Talk button is the SOLE entry point in the new layout — first tap grants
+// mic + camera and opens a session.
+async function onTalkPress() {
+  if (scenarioActive) return; // ignore while a scenario overlay is up
+  if (isConnecting()) return;
+  try {
+    await ensurePermissionsAndUnlock();
+  } catch (err) {
+    setStatus("Mic permission denied.");
+    return;
+  }
+  if (isOpen()) {
+    teardownWs("user stop");
+    return;
+  }
+  openSession();
+  setTalkLabel("Stop");
+}
+
+talkBtn.addEventListener("click", onTalkPress);
+if (startBtn) startBtn.addEventListener("click", onStart);
+actionCallBtn?.addEventListener("click", runQuickCall);
+actionMapsBtn?.addEventListener("click", runEnquireMaps);
+actionEmergencyBtn?.addEventListener("click", runEmergency);
 
 // Two-screen flow: tapping "Get started" reveals the try-it section + controls.
 const continueBtn = document.getElementById("continue-btn");
