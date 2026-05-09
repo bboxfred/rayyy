@@ -65,6 +65,20 @@ let pendingProviderSwitch = null; // queued switch — performed after current t
 let pendingTextThisTurn = ""; // accumulated text chunks in elevenlabs mode (per turn)
 let elevenlabsAudioUrl = null; // current blob URL for cleanup
 
+// face matching state (Phase 8)
+let faceModelsReady = false;
+let faceMatcher = null;
+let faceModelsPromise = null;
+const KIMBERLY_REFERENCE_PATHS = [
+  "/assets/kimberly-1.jpeg",
+  "/assets/kimberly-2.jpeg",
+  "/assets/kimberly-3.jpeg",
+];
+// FaceMatcher distance threshold — LOWER is stricter. 0.55 is a balanced
+// default that gates against false positives while still matching across
+// modest pose / lighting variation.
+const FACE_MATCH_THRESHOLD = 0.55;
+
 // camera state
 let camStream = null;
 let camVideo = null; // off-DOM <video>, painted to canvas via rAF
@@ -504,6 +518,117 @@ function waitFor(predicate, timeoutMs) {
   });
 }
 
+// ---------- face matching (Phase 8) ----------
+// Browser-only, no server side. face-api.js loads from CDN, then we compute
+// 128-dim face descriptors from the 3 Kimberly reference photos at session
+// start. When identify_person_in_front fires, we capture the current
+// viewfinder canvas, run face detection + descriptor, and compare via
+// FaceMatcher (Euclidean distance). Threshold-gated to avoid false positives.
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    const s = document.createElement("script");
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("failed to load " + src));
+    document.head.appendChild(s);
+  });
+}
+
+function loadImageEl(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("failed to load " + src));
+    img.src = src;
+  });
+}
+
+async function ensureFaceModels() {
+  if (faceModelsReady) return true;
+  if (faceModelsPromise) return faceModelsPromise;
+  faceModelsPromise = (async () => {
+    if (!window.faceapi) {
+      await loadScript(
+        "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"
+      );
+    }
+    const MODEL_URL =
+      "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights";
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+    ]);
+
+    // Compute reference descriptors for Kimberly.
+    const refDescriptors = [];
+    for (const path of KIMBERLY_REFERENCE_PATHS) {
+      try {
+        const img = await loadImageEl(path);
+        const det = await faceapi
+          .detectSingleFace(
+            img,
+            new faceapi.TinyFaceDetectorOptions({
+              inputSize: 416,
+              scoreThreshold: 0.3,
+            })
+          )
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+        if (det) refDescriptors.push(det.descriptor);
+      } catch (err) {
+        console.warn("[face] reference load failed:", path, err);
+      }
+    }
+    if (refDescriptors.length === 0) {
+      throw new Error("no Kimberly reference faces could be processed");
+    }
+    faceMatcher = new faceapi.FaceMatcher(
+      [new faceapi.LabeledFaceDescriptors("Kimberly", refDescriptors)],
+      FACE_MATCH_THRESHOLD
+    );
+    faceModelsReady = true;
+    console.log("[face] ready with", refDescriptors.length, "Kimberly references");
+    return true;
+  })();
+  return faceModelsPromise;
+}
+
+// Run the match against the current viewfinder canvas.
+async function runFaceMatch() {
+  await ensureFaceModels();
+  if (!faceMatcher) return { match: false, reason: "no references loaded" };
+  if (!camActive || !viewfinderCanvas.width) {
+    return { match: false, reason: "camera not active" };
+  }
+  const det = await faceapi
+    .detectSingleFace(
+      viewfinderCanvas,
+      new faceapi.TinyFaceDetectorOptions({
+        inputSize: 320,
+        scoreThreshold: 0.35,
+      })
+    )
+    .withFaceLandmarks()
+    .withFaceDescriptor();
+  if (!det) return { match: false, reason: "no face detected in frame" };
+  const best = faceMatcher.findBestMatch(det.descriptor);
+  if (best.label === "unknown") {
+    return {
+      match: false,
+      reason: "face detected but did not match Kimberly",
+      distance: best.distance,
+    };
+  }
+  // FaceMatcher returns distance (lower = more similar). Convert to
+  // confidence in [0, 1] where 1 = identical.
+  const confidence = Math.max(0, 1 - best.distance);
+  return { match: true, label: best.label, confidence, distance: best.distance };
+}
+
 // ---------- tool dispatch ----------
 // Gemini Live sends:  { toolCall: { functionCalls: [{ name, args, id }] } }
 // We respond with:    { toolResponse: { functionResponses: [{ id, name, response: { result: ... } }] } }
@@ -570,13 +695,37 @@ async function dispatchTool(name, _args) {
       return { ok: true, time: fmt.format(new Date()), iso: new Date().toISOString() };
     }
     case "identify_person_in_front": {
-      // Phase-7 stub. Returning recognized:false makes Rayyy describe generically
-      // and explicitly NOT fabricate a name. The honesty principle in code.
-      emitRoom({ kind: "honesty_event", reason: "no_face_match" });
-      return {
-        recognized: false,
-        reason: "no recognition data loaded yet",
-      };
+      // Phase 8 — real face matching against Kimberly references.
+      // The model called this AFTER enable_camera, so the viewfinder canvas
+      // already has a focused frame painted on it.
+      try {
+        const result = await runFaceMatch();
+        if (result.match) {
+          emitRoom({
+            kind: "recognition",
+            who: result.label,
+            confidence: Number(result.confidence.toFixed(2)),
+          });
+          return {
+            recognized: true,
+            name: result.label,
+            confidence: Number(result.confidence.toFixed(2)),
+          };
+        }
+        // No match -> honesty stub so Rayyy describes generically and never
+        // fabricates a name. Pass the reason for debug visibility.
+        emitRoom({ kind: "honesty_event", reason: result.reason });
+        return {
+          recognized: false,
+          reason: result.reason,
+        };
+      } catch (err) {
+        emitRoom({ kind: "honesty_event", reason: "match_error" });
+        return {
+          recognized: false,
+          reason: "face matching error: " + (err && err.message),
+        };
+      }
     }
     case "set_voice_provider": {
       // Phase 7 — REAL switch. Schedule the swap to happen after the current
@@ -881,6 +1030,12 @@ async function onStart() {
   // status + controls + viewfinder become the focus.
   document.body.classList.add("session-active");
   setStatus("Ready. Tap Talk.");
+
+  // Preload face-matching models in the background so the first
+  // identify_person_in_front call doesn't have to wait for ~6MB of weights.
+  ensureFaceModels().catch((err) => {
+    console.warn("[face] preload failed:", err && err.message);
+  });
 }
 
 startBtn.addEventListener("click", onStart);
