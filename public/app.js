@@ -71,6 +71,7 @@ let activeSources = []; // BufferSourceNodes currently scheduled — flushed on 
 let currentProvider = "gemini";
 let pendingProviderSwitch = null; // queued switch — performed after current turn audio drains
 let pendingTextThisTurn = ""; // accumulated text chunks in elevenlabs mode (per turn)
+let pendingInputTranscript = ""; // running transcription of the user's CURRENT utterance — local-only, never forwarded
 let elevenlabsAudioUrl = null; // current blob URL for cleanup
 
 // face matching state (Phase 8)
@@ -969,6 +970,7 @@ function handleServerMessage(data) {
   if (msg?.serverContent?.interrupted) {
     flushAudio("server interrupt");
     pendingTextThisTurn = ""; // also drop any partial text in elevenlabs mode
+    pendingInputTranscript = ""; // user is starting fresh — drop running transcript
     setStatus("Listening…");
   }
 
@@ -1008,6 +1010,9 @@ function handleServerMessage(data) {
   }
 
   if (msg?.serverContent?.turnComplete) {
+    // Reset the running user-utterance transcript so the next utterance
+    // doesn't accumulate on top of the previous one.
+    pendingInputTranscript = "";
     // Privacy: never forward what was said. Just emit a content-free
     // "scene_described" trigger if the camera was on this turn (throttled
     // to one per 5 seconds so a chatty back-and-forth doesn't spam the room).
@@ -1043,38 +1048,49 @@ function handleServerMessage(data) {
     }
   }
 
-  // Input transcription is used LOCALLY only — never forwarded.
+  // Input transcription is used LOCALLY only — never forwarded. Gemini
+  // streams it incrementally, often a few words at a time, so we BUFFER
+  // per-turn and match the running text. Buffer resets on turnComplete
+  // (above) and on barge-in.
   const inText = msg?.serverContent?.inputTranscription?.text;
   if (inText && typeof inText === "string") {
-    const lower = inText.toLowerCase();
+    pendingInputTranscript = (pendingInputTranscript + " " + inText)
+      .replace(/\s+/g, " ")
+      .trim();
+    const running = pendingInputTranscript
+      .toLowerCase()
+      .replace(/[.!?,]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
     // Dashboard location pin
     if (
-      /\bwhere (am i|are we|is this)\b/.test(lower) ||
-      /what (place|venue) is this/.test(lower) ||
-      /what is this place/.test(lower)
+      /\bwhere (am i|are we|is this)\b/.test(running) ||
+      /what (place|venue) is this/.test(running) ||
+      /what is this place/.test(running)
     ) {
       emitRoom({ kind: "location_query" });
     }
-    // Auto-stop on closing phrases. Tears down the WS so Rayyy stops
-    // listening until she taps Talk again. Patterns are crafted to avoid
-    // firing mid-conversation — "thanks for the directions, where am I"
-    // should NOT trigger, but a bare "thanks" or "thank you Rayyy" should.
-    const trimmed = lower.trim().replace(/[.!?,]+$/, "");
-    const goodbyePatterns = [
-      /\bthat'?s? all\b/,
-      /\bi'?m done\b/,
-      /\bstop listening\b/,
-      /\bgood ?bye\b/,
-      /\bbye rayyy\b/,
-      /\bsee (you|ya)( later)?( rayyy)?\b/,
-      /\bthank you,?\s*rayyy\b/,
-      /\bthanks,?\s*rayyy\b/,
-      /\balright[,. ]?\s*(bye|then)\b/,
-      // Whole-utterance closers (avoid matching mid-sentence "thanks" / "bye"):
-      /^(thanks|thank you|bye|cheers|alright|ok bye|okay bye)$/,
+
+    // Auto-stop on closing phrases. We test patterns that ANCHOR to the END
+    // of the running utterance ($), so "thanks for that, where am I" never
+    // matches, but "ok thanks" / "alright bye" / "see you Rayyy" does.
+    const enderPatterns = [
+      /\bthat'?s? all\s*$/,
+      /\bi'?m done\s*$/,
+      /\bstop listening\s*$/,
+      /\bgood ?bye\s*$/,
+      /\bbye(\s+rayyy)?\s*$/,
+      /\bsee (you|ya)( later)?( rayyy)?\s*$/,
+      /\bthanks?(\s+rayyy)?\s*$/,
+      /\bthank you(\s+rayyy)?\s*$/,
+      /\balright(\s+(bye|then))?\s*$/,
+      /\bcheers\s*$/,
+      /\bok(ay)? bye\s*$/,
     ];
-    if (goodbyePatterns.some((p) => p.test(trimmed))) {
+    if (enderPatterns.some((p) => p.test(running))) {
       setStatus("Goodbye, Auntie Mei.");
+      pendingInputTranscript = "";
       setTimeout(() => {
         teardownWs("user said goodbye");
       }, 300);
@@ -1461,15 +1477,18 @@ async function runEmergency() {
         title: "Connected",
         sub: "(picking up…)",
       });
-      // Same Singaporean Louis voice — drier delivery (medium stability,
-      // light style) for the deadpan punchline.
+      // Brian — "Deep, Resonant and Comforting" American voice. Sounds
+      // like a real emergency dispatcher, then drops the deadpan
+      // "hackathon lah" punchline. Calmer voice settings: medium stability,
+      // low style for a dry / matter-of-fact delivery.
       await playElevenLabsClip(
         "Eh hello? I won't call SCDF for a hackathon lah!",
         {
+          voice_id: "nPczCjzI2devNBz1zQrb",
           voice_settings: {
-            stability: 0.4,
+            stability: 0.55,
             similarity_boost: 0.8,
-            style: 0.35,
+            style: 0.25,
             use_speaker_boost: true,
           },
         }
