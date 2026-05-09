@@ -1,0 +1,848 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rayyy — Auntie Mei's Day</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <style>
+      :root {
+        --bg: #faf5ec;
+        --ink: #1a1308;
+        --ink-muted: #7a6a55;
+        --warm: #ff6b35;
+        --warm-soft: #ffe8dc;
+        --warm-deep: #d14e1f;
+        --sky: #4a8fbe;
+        --sky-soft: #dceefa;
+        --sky-deep: #2e6f9c;
+        --mint: #2eaa6e;
+        --mint-soft: #def5e5;
+        --mint-deep: #1f8055;
+        --amber: #e0a92f;
+        --amber-soft: #ffedc4;
+        --amber-deep: #b6831f;
+        --paper: #fffcf6;
+        --edge: #eae2d2;
+      }
+      html,
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "Inter", system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .display {
+        font-family: "Fraunces", Georgia, serif;
+        font-feature-settings: "ss01", "ss02";
+        letter-spacing: -0.01em;
+      }
+      .mono {
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+      }
+      .card {
+        background: var(--paper);
+        border: 1px solid var(--edge);
+        border-radius: 18px;
+        box-shadow:
+          0 1px 0 rgba(0, 0, 0, 0.02),
+          0 8px 24px -16px rgba(40, 28, 12, 0.18),
+          0 24px 60px -32px rgba(40, 28, 12, 0.12);
+        transition: transform 220ms ease, box-shadow 220ms ease;
+      }
+      .card:hover {
+        transform: translateY(-2px);
+        box-shadow:
+          0 1px 0 rgba(0, 0, 0, 0.03),
+          0 14px 30px -14px rgba(40, 28, 12, 0.22),
+          0 30px 80px -34px rgba(40, 28, 12, 0.18);
+      }
+      .card.warm { background: linear-gradient(160deg, var(--warm-soft) 0%, var(--paper) 60%); }
+      .card.sky { background: linear-gradient(160deg, var(--sky-soft) 0%, var(--paper) 60%); }
+      .card.mint { background: linear-gradient(160deg, var(--mint-soft) 0%, var(--paper) 60%); }
+      .card.amber { background: linear-gradient(160deg, var(--amber-soft) 0%, var(--paper) 60%); }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 500;
+        background: var(--paper);
+        border: 1px solid var(--edge);
+        color: var(--ink-muted);
+      }
+      .pill .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--mint);
+      }
+      .pill.live .dot {
+        animation: dot-pulse 1.5s ease-out infinite;
+      }
+      @keyframes dot-pulse {
+        0% { box-shadow: 0 0 0 0 rgba(46, 170, 110, 0.6); }
+        100% { box-shadow: 0 0 0 8px rgba(46, 170, 110, 0); }
+      }
+      .pill.demo .dot { background: var(--amber); }
+      .ring {
+        position: relative;
+        display: inline-block;
+        border-radius: 50%;
+        overflow: visible;
+      }
+      .ring::before,
+      .ring::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 107, 53, 0.55);
+        animation: ring-pulse 2.4s ease-out infinite;
+        pointer-events: none;
+      }
+      .ring::after {
+        animation-delay: 1.2s;
+      }
+      @keyframes ring-pulse {
+        0% { transform: scale(1); opacity: 0.7; }
+        100% { transform: scale(1.45); opacity: 0; }
+      }
+      .breathing {
+        animation: breathing 4s ease-in-out infinite;
+      }
+      @keyframes breathing {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.02); }
+      }
+      .map-frame {
+        height: 100%;
+        min-height: 220px;
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid var(--edge);
+      }
+      .map-frame .leaflet-container {
+        background: #f5e8d2;
+      }
+      /* Soften Leaflet to fit the warm palette */
+      .leaflet-tile { filter: sepia(0.18) saturate(0.85) brightness(1.02); }
+      .leaflet-control-attribution {
+        font-size: 9px !important;
+        background: rgba(255, 252, 246, 0.7) !important;
+        color: var(--ink-muted) !important;
+      }
+      .pin {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--warm);
+        border: 3px solid #fff;
+        box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.55);
+        animation: pin-pulse 2.2s ease-out infinite;
+      }
+      .pin.bump { animation: pin-pulse 0.9s ease-out 3; }
+      @keyframes pin-pulse {
+        0% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.55); }
+        100% { box-shadow: 0 0 0 14px rgba(255, 107, 53, 0); }
+      }
+      .moment {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      .moment.in {
+        opacity: 1;
+        transform: translateY(0);
+        transition: opacity 360ms ease, transform 360ms ease;
+      }
+      .topic-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: var(--paper);
+        border: 1px solid var(--edge);
+        color: var(--ink-muted);
+        font-size: 13px;
+        transition: all 240ms ease;
+      }
+      .topic-chip.lit {
+        background: var(--warm-soft);
+        border-color: var(--warm);
+        color: var(--warm-deep);
+        transform: translateY(-1px);
+      }
+      .topic-chip .count {
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 11px;
+        background: rgba(255, 107, 53, 0.18);
+        color: var(--warm-deep);
+        padding: 1px 6px;
+        border-radius: 999px;
+      }
+      .bar24 {
+        display: flex;
+        align-items: end;
+        gap: 3px;
+        height: 56px;
+      }
+      .bar24 > div {
+        flex: 1;
+        background: var(--sky-soft);
+        border-radius: 3px;
+        transition: height 600ms cubic-bezier(0.4, 0, 0.2, 1), background 240ms ease;
+      }
+      .bar24 > div.now {
+        background: var(--sky);
+      }
+      .bar24 > div.now.bumped {
+        background: var(--sky-deep);
+      }
+      .timeline {
+        position: relative;
+        padding-left: 14px;
+      }
+      .timeline::before {
+        content: "";
+        position: absolute;
+        left: 5px;
+        top: 4px;
+        bottom: 4px;
+        width: 2px;
+        background: var(--edge);
+        border-radius: 2px;
+      }
+      .timeline .item {
+        position: relative;
+        padding: 6px 0;
+      }
+      .timeline .item::before {
+        content: "";
+        position: absolute;
+        left: -13px;
+        top: 12px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--paper);
+        border: 2px solid var(--edge);
+      }
+      .timeline .item.done::before {
+        background: var(--mint);
+        border-color: var(--mint);
+      }
+      .timeline .item.now::before {
+        background: var(--warm);
+        border-color: var(--warm);
+        box-shadow: 0 0 0 4px rgba(255, 107, 53, 0.18);
+      }
+      .braille {
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        letter-spacing: 6px;
+        color: var(--ink-muted);
+      }
+      .sparkline path {
+        fill: none;
+        stroke: var(--mint-deep);
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .ring::before,
+        .ring::after,
+        .pin,
+        .pin.bump,
+        .pill.live .dot,
+        .breathing {
+          animation: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body class="min-h-screen">
+    <div class="max-w-[1400px] mx-auto px-6 py-6">
+      <!-- Header -->
+      <header class="flex items-center justify-between gap-4 pb-5 border-b border-[var(--edge)]">
+        <div class="flex items-center gap-3">
+          <h1 class="display text-3xl font-semibold tracking-tight">rayyy</h1>
+          <span class="text-[var(--ink-muted)] text-sm">·</span>
+          <p id="greeting" class="text-[var(--ink-muted)] text-sm"></p>
+        </div>
+        <div class="flex items-center gap-3">
+          <span id="clock" class="mono text-sm text-[var(--ink-muted)] tabular-nums"></span>
+          <span id="conn-pill" class="pill live"><span class="dot"></span><span id="conn-label">Connected</span></span>
+        </div>
+      </header>
+
+      <!-- Hero -->
+      <section class="card warm mt-6 p-7 md:p-8 grid md:grid-cols-[180px_1fr_auto] gap-7 items-center">
+        <div class="ring breathing self-center justify-self-center">
+          <div class="relative rounded-full overflow-hidden w-[156px] h-[156px] bg-[var(--warm-soft)] flex items-center justify-center">
+            <span class="display text-[88px] font-medium text-[var(--warm-deep)] absolute inset-0 flex items-center justify-center">梅</span>
+            <img
+              id="portrait"
+              alt="Auntie Mei portrait"
+              src="/assets/auntie-mei-square.jpg"
+              class="absolute inset-0 w-full h-full object-cover"
+              onerror="this.style.display='none'"
+            />
+          </div>
+        </div>
+        <div>
+          <p class="text-sm text-[var(--ink-muted)] uppercase tracking-[0.18em]">Auntie Mei</p>
+          <h2 class="display text-[40px] md:text-[48px] leading-[1.05] mt-1">
+            She's at the conference today.
+          </h2>
+          <p class="mt-2 text-[var(--ink-muted)] text-base max-w-[52ch]">
+            Toa Payoh · 72 · diabetic retinopathy. Rayyy is on her chest, listening,
+            looking when she asks. You'll see her day unfold here as it happens.
+          </p>
+          <div class="flex flex-wrap gap-2 mt-4">
+            <span id="status-pill" class="pill"><span class="dot"></span><span id="status-label">Idle</span></span>
+            <span class="pill"><span class="dot" style="background:var(--sky)"></span>Voice: Charon</span>
+            <span class="pill"><span class="dot" style="background:var(--amber)"></span>Latency ~280ms</span>
+          </div>
+        </div>
+        <div class="flex md:flex-col gap-5 md:gap-3 justify-around md:justify-center">
+          <div class="text-center md:text-right">
+            <div id="stat-days" class="display text-[40px] leading-none font-medium tabular-nums">0</div>
+            <div class="text-xs text-[var(--ink-muted)] uppercase tracking-[0.14em] mt-1">Days connected</div>
+          </div>
+          <div class="text-center md:text-right">
+            <div id="stat-moments" class="display text-[40px] leading-none font-medium tabular-nums">0</div>
+            <div class="text-xs text-[var(--ink-muted)] uppercase tracking-[0.14em] mt-1">Moments today</div>
+          </div>
+          <div class="text-center md:text-right">
+            <div id="stat-checkins" class="display text-[40px] leading-none font-medium tabular-nums">0</div>
+            <div class="text-xs text-[var(--ink-muted)] uppercase tracking-[0.14em] mt-1">Wellbeing pings</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Row 1 -->
+      <section class="grid md:grid-cols-3 gap-5 mt-5">
+        <!-- Where she is -->
+        <div class="card sky p-5 reveal">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="display text-xl">Where she is</h3>
+            <span id="loc-caption" class="text-xs text-[var(--ink-muted)]">Toa Payoh · home</span>
+          </div>
+          <div class="map-frame relative">
+            <div id="map" class="absolute inset-0"></div>
+            <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[400] pointer-events-none">
+              <div id="map-pin" class="pin"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent moments -->
+        <div class="card p-5 reveal">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="display text-xl">Recent moments</h3>
+            <span class="text-xs text-[var(--ink-muted)]">Just now</span>
+          </div>
+          <ul id="moments" class="space-y-3 text-sm"></ul>
+          <p id="moments-empty" class="text-sm text-[var(--ink-muted)] italic">Nothing yet today. She'll talk to Rayyy when she's ready.</p>
+        </div>
+
+        <!-- Wellbeing + Tonight -->
+        <div class="card mint p-5 reveal flex flex-col gap-4">
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="display text-xl">Wellbeing</h3>
+              <span class="text-xs text-[var(--ink-muted)]">Last 7 days</span>
+            </div>
+            <svg class="sparkline w-full h-16" viewBox="0 0 200 60" preserveAspectRatio="none">
+              <path id="spark" d="" />
+            </svg>
+            <div class="flex items-baseline justify-between mt-1">
+              <span class="text-sm text-[var(--ink-muted)]">Steady, talkative</span>
+              <span class="display text-2xl tabular-nums" id="wellbeing-score">8.2</span>
+            </div>
+          </div>
+          <div class="border-t border-[var(--edge)] pt-3">
+            <p class="text-xs text-[var(--ink-muted)] uppercase tracking-[0.16em]">Tonight</p>
+            <p class="text-sm mt-1">9:30pm · metformin · 500mg</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Row 2 -->
+      <section class="grid md:grid-cols-3 gap-5 mt-5">
+        <!-- Today's rhythm -->
+        <div class="card p-5 reveal">
+          <h3 class="display text-xl mb-3">Today's rhythm</h3>
+          <ul class="timeline text-sm">
+            <li class="item done"><span class="text-[var(--ink-muted)]">7:10am</span> · Tea, kaya toast</li>
+            <li class="item done"><span class="text-[var(--ink-muted)]">8:40am</span> · Walk to MRT</li>
+            <li class="item now"><span class="text-[var(--ink-muted)]">11:30am</span> · At AI Engineer Singapore</li>
+            <li class="item"><span class="text-[var(--ink-muted)]">1:00pm</span> · Lunch with Kimberly</li>
+            <li class="item"><span class="text-[var(--ink-muted)]">4:00pm</span> · Dr. Tan · NUH</li>
+            <li class="item"><span class="text-[var(--ink-muted)]">7:30pm</span> · Ah-Hua calls</li>
+          </ul>
+        </div>
+
+        <!-- Health snapshot -->
+        <div class="card amber p-5 reveal">
+          <h3 class="display text-xl mb-3">Health snapshot</h3>
+          <div class="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p class="text-[var(--ink-muted)] uppercase tracking-[0.14em] text-[10px]">Blood sugar</p>
+              <p class="display text-2xl">6.8 <span class="text-sm text-[var(--ink-muted)]">mmol/L</span></p>
+            </div>
+            <div>
+              <p class="text-[var(--ink-muted)] uppercase tracking-[0.14em] text-[10px]">Hydration</p>
+              <p class="display text-2xl">5 <span class="text-sm text-[var(--ink-muted)]">/ 8 cups</span></p>
+            </div>
+            <div>
+              <p class="text-[var(--ink-muted)] uppercase tracking-[0.14em] text-[10px]">Steps</p>
+              <p class="display text-2xl">3,140</p>
+            </div>
+            <div>
+              <p class="text-[var(--ink-muted)] uppercase tracking-[0.14em] text-[10px]">Sleep</p>
+              <p class="display text-2xl">7h 12m</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Her circle -->
+        <div class="card p-5 reveal">
+          <h3 class="display text-xl mb-3">Her circle</h3>
+          <ul class="space-y-2 text-sm">
+            <li class="flex items-center justify-between">
+              <span><span class="display text-base">Ah-Hua</span> · daughter, Punggol</span>
+              <span class="pill"><span class="dot" style="background:var(--mint)"></span>Sat 7:30pm call</span>
+            </li>
+            <li class="flex items-center justify-between">
+              <span><span class="display text-base">Kimberly</span> · friend</span>
+              <span class="pill"><span class="dot" style="background:var(--warm)"></span>With her today</span>
+            </li>
+            <li class="flex items-center justify-between">
+              <span><span class="display text-base">Dr. Tan</span> · NUH</span>
+              <span class="pill"><span class="dot" style="background:var(--amber)"></span>4pm appt</span>
+            </li>
+            <li class="flex items-center justify-between">
+              <span><span class="display text-base">Mr. Lim</span> · neighbour, helps with errands</span>
+              <span class="pill">Last seen Tue</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Row 3 -->
+      <section class="grid md:grid-cols-3 gap-5 mt-5">
+        <!-- Topics today (privacy-safe) -->
+        <div class="card p-5 reveal">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="display text-xl">Topics today</h3>
+            <span class="text-[10px] text-[var(--ink-muted)] uppercase tracking-[0.16em]">No words leave the device</span>
+          </div>
+          <div id="topics" class="flex flex-wrap gap-2"></div>
+          <p class="text-xs text-[var(--ink-muted)] mt-3">
+            Each chip lights up when Rayyy handles that kind of moment.
+            Auntie Mei's words are never sent here — only the kind of moment is.
+          </p>
+        </div>
+
+        <!-- Activity 24h -->
+        <div class="card sky p-5 reveal">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="display text-xl">Activity pattern</h3>
+            <span class="text-xs text-[var(--ink-muted)]">Today vs typical</span>
+          </div>
+          <div id="bar24" class="bar24 mt-3"></div>
+          <div class="flex items-center justify-between text-[10px] text-[var(--ink-muted)] mt-2">
+            <span>00</span><span>06</span><span>12</span><span>18</span><span>23</span>
+          </div>
+        </div>
+
+        <!-- Reach Mum + Emergency -->
+        <div class="card warm p-5 reveal flex flex-col gap-3">
+          <div>
+            <h3 class="display text-xl mb-3">Reach Mum</h3>
+            <button class="w-full text-left px-4 py-3 rounded-xl bg-[var(--paper)] border border-[var(--edge)] hover:border-[var(--warm)] transition">
+              <div class="display text-lg">Voice call Mum</div>
+              <div class="text-xs text-[var(--ink-muted)]">Rayyy answers, hands her the phone</div>
+            </button>
+            <button class="w-full text-left px-4 py-3 rounded-xl bg-[var(--paper)] border border-[var(--edge)] hover:border-[var(--warm)] transition mt-2">
+              <div class="display text-lg">Send a voice note</div>
+              <div class="text-xs text-[var(--ink-muted)]">Rayyy reads it to her later</div>
+            </button>
+          </div>
+          <div class="border-t border-[var(--edge)] pt-3">
+            <p class="text-xs text-[var(--ink-muted)] uppercase tracking-[0.16em] mb-2">Emergency</p>
+            <div class="flex flex-wrap gap-2 text-sm">
+              <span class="pill">Ah-Hua · 9123 4567</span>
+              <span class="pill">Mr. Lim · 9876 5432</span>
+              <span class="pill">SCDF 995</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <footer class="mt-8 pb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-[var(--ink-muted)]">
+        <div class="braille text-base">⠗ ⠁ ⠽ ⠽ ⠽</div>
+        <div class="italic">Connected, not watched.</div>
+        <div class="mono">last sync · <span id="last-sync">—</span></div>
+      </footer>
+    </div>
+
+    <script>
+      // ---------- relay (matches phone) ----------
+      const relayBase = (() => {
+        const p = new URLSearchParams(location.search);
+        const o = p.get("relay");
+        if (o) return o.replace(/\/$/, "");
+        return "https://rayyy-relay.fred-53e.workers.dev";
+      })();
+      const fakeMode = new URLSearchParams(location.search).get("fake") === "true";
+
+      // ---------- header / clock / greeting ----------
+      const clockEl = document.getElementById("clock");
+      const greetingEl = document.getElementById("greeting");
+      function tickClock() {
+        const now = new Date();
+        const fmt = new Intl.DateTimeFormat("en-SG", {
+          timeZone: "Asia/Singapore",
+          hour: "numeric",
+          minute: "2-digit",
+        });
+        clockEl.textContent = fmt.format(now) + " SGT";
+        const h = parseInt(
+          new Intl.DateTimeFormat("en-SG", {
+            timeZone: "Asia/Singapore",
+            hour: "numeric",
+            hour12: false,
+          }).format(now),
+          10
+        );
+        let g = "Good evening, Ah-Hua.";
+        if (h < 12) g = "Good morning, Ah-Hua.";
+        else if (h < 18) g = "Good afternoon, Ah-Hua.";
+        greetingEl.textContent = g;
+      }
+      tickClock();
+      setInterval(tickClock, 30000);
+
+      // ---------- map (Leaflet, Toa Payoh) ----------
+      const map = L.map("map", {
+        zoomControl: false,
+        attributionControl: true,
+        dragging: false,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
+        boxZoom: false,
+        keyboard: false,
+        touchZoom: false,
+      }).setView([1.3343, 103.8479], 15); // Toa Payoh
+      L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png",
+        {
+          maxZoom: 18,
+          attribution:
+            '&copy; <a href="https://carto.com/attributions">CARTO</a> &copy; OSM contributors',
+        }
+      ).addTo(map);
+
+      // ---------- stats / counters ----------
+      const stats = { days: 247, moments: 0, checkins: 0 };
+      function setStat(id, val) {
+        const el = document.getElementById(id);
+        const cur = parseInt(el.textContent.replace(/,/g, ""), 10) || 0;
+        if (val === cur) return;
+        gsap.fromTo(
+          { v: cur },
+          { v: cur },
+          {
+            v: val,
+            duration: 0.8,
+            ease: "power2.out",
+            onUpdate: function () {
+              el.textContent = Math.round(this.targets()[0].v).toLocaleString();
+            },
+          }
+        );
+      }
+      setStat("stat-days", stats.days);
+
+      // ---------- moments feed ----------
+      const momentsList = document.getElementById("moments");
+      const momentsEmpty = document.getElementById("moments-empty");
+      const MAX_MOMENTS = 5;
+      function pushMoment(text, tone = "neutral") {
+        momentsEmpty.style.display = "none";
+        const li = document.createElement("li");
+        li.className = "moment flex items-start gap-3";
+        const dot = document.createElement("span");
+        dot.className = "mt-2 inline-block w-2 h-2 rounded-full";
+        dot.style.background = {
+          neutral: "var(--ink-muted)",
+          warm: "var(--warm)",
+          sky: "var(--sky)",
+          mint: "var(--mint)",
+          amber: "var(--amber)",
+        }[tone] || "var(--ink-muted)";
+        li.appendChild(dot);
+        const span = document.createElement("span");
+        span.innerHTML = `<span class="text-[var(--ink-muted)] mono text-[11px] mr-2">${nowLabel()}</span>${text}`;
+        li.appendChild(span);
+        momentsList.prepend(li);
+        requestAnimationFrame(() => li.classList.add("in"));
+        while (momentsList.children.length > MAX_MOMENTS) {
+          momentsList.removeChild(momentsList.lastElementChild);
+        }
+        stats.moments += 1;
+        setStat("stat-moments", stats.moments);
+      }
+      function nowLabel() {
+        return new Intl.DateTimeFormat("en-SG", {
+          timeZone: "Asia/Singapore",
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(new Date());
+      }
+
+      // ---------- topics chips ----------
+      const TOPICS = [
+        { id: "greeting", label: "Greeting", kinds: ["conversation_start"] },
+        { id: "location", label: "Where am I", kinds: ["location_query"] },
+        { id: "scene", label: "What's around", kinds: ["scene_described"] },
+        { id: "faces", label: "Who's there", kinds: ["recognition", "honesty_event"] },
+        { id: "time", label: "Time", kinds: ["time_check"] },
+        { id: "voice", label: "Voice tweak", kinds: ["voice_switch"] },
+        { id: "wellbeing", label: "Check-in", kinds: ["wellbeing_tick"] },
+      ];
+      const topicCounts = {};
+      const topicsEl = document.getElementById("topics");
+      for (const t of TOPICS) {
+        topicCounts[t.id] = 0;
+        const chip = document.createElement("span");
+        chip.className = "topic-chip";
+        chip.dataset.topic = t.id;
+        chip.innerHTML = `${t.label} <span class="count">0</span>`;
+        topicsEl.appendChild(chip);
+      }
+      function bumpTopic(kind) {
+        for (const t of TOPICS) {
+          if (t.kinds.includes(kind)) {
+            topicCounts[t.id] += 1;
+            const chip = topicsEl.querySelector(`[data-topic="${t.id}"]`);
+            chip.classList.add("lit");
+            chip.querySelector(".count").textContent = topicCounts[t.id];
+            return;
+          }
+        }
+      }
+
+      // ---------- 24h activity bars ----------
+      const bar24 = document.getElementById("bar24");
+      // typical pattern (mocked) per hour 0..23 — moments she'd usually have
+      const typical = [0,0,0,0,0,0,1,3,5,3,4,5,6,4,3,3,2,3,5,4,3,2,1,0];
+      const today = new Array(24).fill(0);
+      const nowHour = new Date().getHours();
+      for (let h = 0; h < 24; h++) {
+        const div = document.createElement("div");
+        const v = Math.max(typical[h], 0.5);
+        div.style.height = `${(v / 8) * 100}%`;
+        if (h === nowHour) div.classList.add("now");
+        bar24.appendChild(div);
+      }
+      function bumpActivity() {
+        today[nowHour] += 1;
+        const div = bar24.children[nowHour];
+        const v = Math.max(today[nowHour] + typical[nowHour] / 2, typical[nowHour], 1);
+        div.style.height = `${Math.min((v / 8) * 100, 100)}%`;
+        div.classList.add("bumped");
+        setTimeout(() => div.classList.remove("bumped"), 800);
+      }
+
+      // ---------- sparkline ----------
+      const spark = document.getElementById("spark");
+      const wellbeingHist = [7.4, 7.8, 8.0, 7.9, 8.1, 8.3, 8.2];
+      function drawSpark(extra = 0) {
+        const series = wellbeingHist.slice();
+        if (extra) series[series.length - 1] = Math.min(10, series[series.length - 1] + extra);
+        const w = 200;
+        const h = 60;
+        const pad = 4;
+        const min = Math.min(...series) - 0.4;
+        const max = Math.max(...series) + 0.4;
+        const range = Math.max(0.1, max - min);
+        const pts = series.map((v, i) => {
+          const x = pad + ((w - 2 * pad) * i) / (series.length - 1);
+          const y = h - pad - ((v - min) / range) * (h - 2 * pad);
+          return [x, y];
+        });
+        const d = pts.map(([x, y], i) => (i ? `L${x.toFixed(1)} ${y.toFixed(1)}` : `M${x.toFixed(1)} ${y.toFixed(1)}`)).join(" ");
+        spark.setAttribute("d", d);
+        const len = spark.getTotalLength();
+        spark.style.strokeDasharray = len;
+        spark.style.strokeDashoffset = len;
+        gsap.to(spark, { strokeDashoffset: 0, duration: 1.2, ease: "power2.out" });
+      }
+      drawSpark();
+
+      // ---------- status pill ----------
+      const statusPill = document.getElementById("status-pill");
+      const statusLabel = document.getElementById("status-label");
+      const connPill = document.getElementById("conn-pill");
+      const connLabel = document.getElementById("conn-label");
+      const lastSyncEl = document.getElementById("last-sync");
+      function setStatus(label, kind) {
+        statusLabel.textContent = label;
+        statusPill.classList.remove("live", "demo");
+        if (kind === "live") {
+          statusPill.classList.add("live");
+          statusPill.querySelector(".dot").style.background = "var(--mint)";
+        } else if (kind === "demo") {
+          statusPill.classList.add("demo");
+          statusPill.querySelector(".dot").style.background = "var(--amber)";
+        } else {
+          statusPill.querySelector(".dot").style.background = "var(--ink-muted)";
+        }
+      }
+      setStatus("Idle", "");
+
+      // ---------- map pulse ----------
+      const mapPin = document.getElementById("map-pin");
+      const locCaption = document.getElementById("loc-caption");
+      function bumpMap(label) {
+        mapPin.classList.add("bump");
+        setTimeout(() => mapPin.classList.remove("bump"), 2700);
+        if (label) locCaption.textContent = label;
+      }
+
+      // ---------- staggered reveal ----------
+      window.addEventListener("load", () => {
+        gsap.from(".reveal", {
+          opacity: 0,
+          y: 14,
+          duration: 0.6,
+          stagger: 0.07,
+          ease: "power2.out",
+          delay: 0.1,
+        });
+      });
+
+      // ---------- event handler ----------
+      function handleEvent(evt) {
+        if (!evt || !evt.kind) return;
+        bumpTopic(evt.kind);
+        lastSyncEl.textContent = nowLabel();
+        switch (evt.kind) {
+          case "conversation_start":
+            setStatus("Talking with Rayyy", "live");
+            pushMoment("Auntie Mei started a conversation with Rayyy.", "warm");
+            bumpActivity();
+            drawSpark(0.05);
+            break;
+          case "wellbeing_tick":
+            stats.checkins += 1;
+            setStat("stat-checkins", stats.checkins);
+            drawSpark(0.02);
+            break;
+          case "location_query":
+            bumpMap("AI Engineer Singapore · Acacia College");
+            pushMoment("She asked where she was. Rayyy named the venue.", "sky");
+            break;
+          case "scene_described":
+            pushMoment("Rayyy looked at something for her.", "amber");
+            break;
+          case "recognition":
+            pushMoment(
+              evt.who
+                ? `Rayyy recognised ${evt.who} in front of her.`
+                : "Rayyy looked for a familiar face.",
+              "warm"
+            );
+            break;
+          case "honesty_event":
+            pushMoment(
+              "Rayyy didn't recognise the person — described them generically instead.",
+              "amber"
+            );
+            break;
+          case "voice_switch":
+            pushMoment(
+              "She asked to change Rayyy's voice. Rayyy explained it's not available yet.",
+              "sky"
+            );
+            break;
+          case "time_check":
+            pushMoment("She asked the time.", "mint");
+            break;
+        }
+      }
+
+      // ---------- WS to room ----------
+      let roomWs = null;
+      function connectRoom() {
+        if (fakeMode) {
+          connLabel.textContent = "Demo timeline";
+          connPill.classList.remove("live");
+          connPill.classList.add("demo");
+          runFakeTimeline();
+          return;
+        }
+        const url = relayBase.replace(/^http/, "ws") + "/ws/auntie-mei?role=reader";
+        roomWs = new WebSocket(url);
+        roomWs.addEventListener("open", () => {
+          connLabel.textContent = "Connected";
+        });
+        roomWs.addEventListener("message", (event) => {
+          try {
+            const evt = JSON.parse(event.data);
+            handleEvent(evt);
+          } catch (_) {}
+        });
+        roomWs.addEventListener("close", () => {
+          connLabel.textContent = "Reconnecting…";
+          setTimeout(connectRoom, 1500);
+        });
+        roomWs.addEventListener("error", () => {});
+      }
+      connectRoom();
+
+      // ---------- bulletproof projector backup ----------
+      // ?fake=true plays a 32-second scripted timeline ignoring the room.
+      // For when venue Wi-Fi dies during the demo.
+      function runFakeTimeline() {
+        const T = (sec, fn) => setTimeout(fn, sec * 1000);
+        T(1, () => handleEvent({ kind: "conversation_start", openMs: 290 }));
+        T(4, () => handleEvent({ kind: "location_query" }));
+        T(8, () => handleEvent({ kind: "scene_described" }));
+        T(12, () =>
+          handleEvent({ kind: "recognition", who: "Kimberly" })
+        );
+        T(16, () => handleEvent({ kind: "time_check" }));
+        T(20, () => handleEvent({ kind: "voice_switch" }));
+        T(24, () => handleEvent({ kind: "honesty_event" }));
+        T(28, () => handleEvent({ kind: "wellbeing_tick" }));
+        T(32, () => handleEvent({ kind: "conversation_start", openMs: 305 }));
+      }
+    </script>
+  </body>
+</html>
