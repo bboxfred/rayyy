@@ -1,0 +1,146 @@
+/* Phase 2 — dev-test minimal. The phone is the dev surface; the polished
+   surface is the dashboard (Phase 5). Auntie Mei is blind, so this UI only
+   needs to be tap-targety enough for Freddy to test. */
+
+:root {
+  --bg: #0a0a0a;
+  --fg: #f5e6d3;
+  --accent: #ff6b35;
+  --muted: #7a6a55;
+  --card: #14110d;
+  --edge: #2a241c;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+main {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: max(env(safe-area-inset-top), 24px) 20px
+    max(env(safe-area-inset-bottom), 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 100dvh;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 4px 4px 12px;
+  border-bottom: 1px solid var(--edge);
+}
+
+h1 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+
+.voice-tag {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  padding: 18px 18px 16px;
+}
+
+#status {
+  margin: 0 0 6px;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
+}
+
+button.big {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--edge);
+  background: var(--card);
+  color: var(--fg);
+  border-radius: 14px;
+  padding: 22px 18px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: transform 80ms ease, background 120ms ease, border-color 120ms ease;
+  touch-action: manipulation;
+}
+
+button.big:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+button.big:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.big.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0a0a0a;
+}
+
+button.big.primary.live {
+  box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.55);
+  animation: pulse 1.6s ease-out infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 18px rgba(255, 107, 53, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.big.primary.live {
+    animation: none;
+  }
+}
+
+#audio-out {
+  width: 0;
+  height: 0;
+  position: absolute;
+  visibility: hidden;
+}

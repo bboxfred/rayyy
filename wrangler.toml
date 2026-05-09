@@ -1,0 +1,22 @@
+name = "rayyy-relay"
+main = "worker/index.js"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# GEMINI_API_KEY is set as a secret:
+#   echo "AIza..." | wrangler secret put GEMINI_API_KEY
+
+[vars]
+GEMINI_MODEL = "gemini-3.1-flash-live-preview"
+GEMINI_VOICE = "Charon"
+
+# Durable Object: family-dashboard pub/sub room.
+# Free plan REQUIRES new_sqlite_classes (not new_classes) — the regular
+# new_classes migration fails with a billing error on the free tier.
+[[durable_objects.bindings]]
+name = "AUNTIE_MEI_ROOM"
+class_name = "AuntieMeiRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AuntieMeiRoom"]

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Rayyy — Phase 2</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>rayyy</h1>
+        <p id="voice-tag" class="voice-tag">Voice: …</p>
+      </header>
+
+      <section id="status-card" class="card">
+        <p id="status">Tap to start.</p>
+        <p id="hint" class="hint">
+          Earbuds recommended. Spacebar or earbud-tap toggles Talk.
+        </p>
+      </section>
+
+      <section class="controls">
+        <button id="start-btn" class="big">Tap to start</button>
+        <button id="talk-btn" class="big primary" disabled>Talk</button>
+      </section>
+
+      <!-- Audio output sink. Routing AudioContext through MediaStreamDestination ->
+           <audio> uses iOS's media-playback path, which preserves loudspeaker
+           routing across audio session changes. Connecting straight to
+           AudioContext.destination loses the speaker on iOS Safari. -->
+      <audio id="audio-out" autoplay playsinline></audio>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
