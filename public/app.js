@@ -4,18 +4,20 @@
 //   Tap to start  -> getUserMedia({audio}) + unlock AudioContext + load /health
 //   Talk          -> open WS to Worker /ws, stream mic PCM16 @ 16kHz
 //                    receive audio frames, decode base64 PCM16, schedule via
-//                    AudioBufferSourceNodes on outCtx.destination directly.
-//                    Web Audio handles 24kHz -> device-rate conversion.
+//                    AudioBufferSourceNodes on a MediaStreamDestination ->
+//                    <audio> sink. Web Audio handles 24kHz -> device-rate.
 //
 // Hard rules baked in here (each one is a real bug we already paid for):
 //   - speechConfig is set server-side. Client never touches it.
-//   - Demo runs on USB-C EarPods, so we connect output directly to
-//     outCtx.destination. No MediaStreamDestination + <audio> indirection,
-//     which adds buffering and is iOS Safari's biggest pitch-wobble surface.
+//   - Output goes through MediaStreamDestination -> <audio>, NOT direct to
+//     outCtx.destination. Direct path loses the loudspeaker on iOS Safari
+//     when the camera turns on (audio flips to the earpiece speaker).
 //   - Mic ScriptProcessor sinks to a muted GainNode, NOT inCtx.destination —
 //     two AudioContexts both feeding speakers fight iOS's resampler.
 //   - Flush queued audio sources on serverContent.interrupted (barge-in),
 //     otherwise overlapping turns sound like pitch wobble.
+//   - audioOut.playbackRate = 1.0 + preservesPitch = true so iOS media
+//     policy nudges don't drift the rate.
 //   - Reset nextStartTime = outCtx.currentTime on AudioContext resume.
 //   - Block stacked sessions: ignore Talk while ws.readyState === CONNECTING.
 
@@ -31,6 +33,7 @@ const startBtn = document.getElementById("start-btn");
 const talkBtn = document.getElementById("talk-btn");
 const statusEl = document.getElementById("status");
 const voiceTag = document.getElementById("voice-tag");
+const audioOut = document.getElementById("audio-out");
 const viewfinderCard = document.getElementById("viewfinder-card");
 const viewfinderCanvas = document.getElementById("viewfinder");
 const viewfinderCaption = document.getElementById("viewfinder-caption");
@@ -39,6 +42,7 @@ const viewfinderCaption = document.getElementById("viewfinder-caption");
 let micStream = null;
 let inCtx = null;
 let outCtx = null;
+let outDest = null; // MediaStreamDestination — fed into the <audio> element for iOS-safe loudspeaker routing
 let micProcessor = null;
 let micSource = null;
 let micSink = null; // GainNode at 0 — keeps ScriptProcessor pumping without feeding speakers
@@ -99,18 +103,24 @@ function stopMicCapture() {
   micSource = null;
 }
 
-// ---------- audio: output sink (HARD RESET, minimal pipeline) ----------
-// Demo hardware uses USB-C EarPods, which bypass the iOS loudspeaker-routing
-// trap entirely. We connect AudioBufferSourceNodes directly to
-// outCtx.destination — no MediaStreamDestination + <audio> indirection,
-// which was the biggest source of pitch/speed wobble. We also stop trying
-// to JS-resample; Web Audio handles rate conversion when AudioBuffer is
-// created at the source rate (24kHz from Gemini Live).
+// ---------- audio: output sink ----------
+// Judges may pick up the phone WITHOUT earbuds. iOS Safari flips audio output
+// to the tiny earpiece speaker the moment getUserMedia({video}) runs (camera
+// active). The fix: route AudioContext through MediaStreamDestination -> <audio>,
+// which uses iOS's media-playback path and preserves loudspeaker routing across
+// audio session changes.
+//
+// This pipeline adds a buffer, which can cause pitch wobble if pre-interrupt
+// audio overlaps with the next reply. The barge-in flush below (flushAudio()
+// on serverContent.interrupted) is what keeps it steady.
 function ensureOutputContext() {
   if (outCtx && outCtx.state !== "closed") return outCtx;
   outCtx = new (window.AudioContext || window.webkitAudioContext)({
     latencyHint: "playback",
   });
+  outDest = outCtx.createMediaStreamDestination();
+  audioOut.srcObject = outDest.stream;
+  audioOut.volume = 1.0;
   // Reset queue clock on resume so we don't schedule in the past.
   outCtx.addEventListener("statechange", () => {
     if (outCtx.state === "running") {
@@ -124,6 +134,15 @@ async function unlockAudio() {
   ensureOutputContext();
   try {
     if (outCtx.state === "suspended") await outCtx.resume();
+  } catch (_) {}
+  // Lock natural rate — iOS media policy can otherwise drift this.
+  try {
+    audioOut.playbackRate = 1.0;
+    audioOut.preservesPitch = true;
+  } catch (_) {}
+  // Force the <audio> sink to start so iOS commits to media-playback routing.
+  try {
+    await audioOut.play();
   } catch (_) {}
   nextStartTime = outCtx.currentTime;
 }
@@ -144,10 +163,10 @@ function flushAudio(_reason = "interrupt") {
 }
 
 // Decode base64 PCM16, create AudioBuffer at the SOURCE rate (e.g. 24kHz),
-// connect to outCtx.destination, schedule. Web Audio handles the rate
-// conversion to outCtx.sampleRate at playback time.
+// connect to MediaStreamDestination -> <audio>, schedule. Web Audio handles
+// the rate conversion to outCtx.sampleRate at playback time.
 function playAudioChunk(base64Pcm, sourceRate) {
-  if (!outCtx) return;
+  if (!outCtx || !outDest) return;
   const bytes = base64ToBytes(base64Pcm);
   if (bytes.length < 2) return;
 
@@ -161,7 +180,7 @@ function playAudioChunk(base64Pcm, sourceRate) {
 
   const node = outCtx.createBufferSource();
   node.buffer = buffer;
-  node.connect(outCtx.destination);
+  node.connect(outDest);
 
   const now = outCtx.currentTime;
   if (nextStartTime < now) nextStartTime = now;

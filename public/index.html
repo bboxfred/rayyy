@@ -39,8 +39,15 @@
         <button id="talk-btn" class="big primary" disabled>Talk</button>
       </section>
 
+      <!-- Audio output sink. Routing AudioContext through MediaStreamDestination
+           -> <audio> uses iOS's media-playback path, which preserves loudspeaker
+           routing across audio session changes (i.e. when the camera turns on).
+           Without this, iOS Safari flips output to the tiny earpiece speaker
+           the moment getUserMedia({video}) runs — fine with earbuds, useless
+           if a judge picks up the phone with no earbuds. -->
+      <audio id="audio-out" autoplay playsinline></audio>
     </main>
 
-    <script src="/app.js?v=5"></script>
+    <script src="/app.js?v=6"></script>
   </body>
 </html>
