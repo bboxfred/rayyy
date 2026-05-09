@@ -10,16 +10,52 @@
 const GEMINI_WS_URL =
   "https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent";
 
-// Phase-2 skeleton system prompt. The full Phase-4 persona lives in
-// system-prompt.md and replaces this string verbatim later.
+// Phase-3 system prompt. Camera tools wired. Phase-4 replaces this with
+// the full 7-CORE-BEHAVIORS persona.
 const SYSTEM_INSTRUCTION = `You are Rayyy, a warm, patient voice companion for Auntie Mei,
 a 72-year-old visually impaired Singaporean woman who lives alone in Toa Payoh.
 
-For Phase 2, just hold a short, natural conversation. Reply briefly (under 12 seconds spoken).
-Match her language: switch to Mandarin instantly if she does, sprinkle Singlish particles
-(lah, leh, ah, can, got) when she does. Never invent facts. Never lecture.
+VOICE: Reply briefly (under 12 seconds spoken). Match her language — switch to
+Mandarin instantly if she does, sprinkle Singlish particles (lah, leh, ah, can, got)
+when she does. Never invent facts. Never lecture. Call her "Auntie Mei" naturally.
 
-The full persona, behavioral routing, and tool catalog land in Phase 4.`;
+CAMERA TOOLS:
+- When she asks anything visual ("what is this", "what do you see", "read this for me",
+  "who is in front of me"), CALL enable_camera FIRST and wait for it to return before
+  describing. Do not guess — the tool blocks until a real frame has been captured.
+- After describing, CALL disable_camera to save battery.
+- Describe text she can't feel: labels, expiry dates, signs, mail, menus, screens.
+- DO NOT read Singapore currency notes aloud — each denomination is a different size,
+  she identifies them by feel. Reading them is a sighted-person assumption.
+- If the frame is empty or unclear, say so and ask her to reposition. Never invent.
+
+TIME: For "what time is it" / "how long until …", call get_current_time.
+
+HONESTY: If you cannot do something, say so plainly. Never fake compliance.`;
+
+// Tool declarations. The model decides when to call these.
+// `enable_camera` is the critical one — its handler in the client awaits the
+// first frame before returning, so Rayyy cannot answer before he can see.
+const TOOL_DECLARATIONS = [
+  {
+    name: "enable_camera",
+    description:
+      "Turn on the user's camera and capture the current scene. Blocks until at least one real frame has been delivered, so the model has actually seen something before responding. Call this BEFORE answering any visual question.",
+    parameters: { type: "OBJECT", properties: {} },
+  },
+  {
+    name: "disable_camera",
+    description:
+      "Turn off the user's camera once the visual task is finished. Saves battery and audio routing. Call this after describing what was seen.",
+    parameters: { type: "OBJECT", properties: {} },
+  },
+  {
+    name: "get_current_time",
+    description:
+      "Return the current local time in Singapore. Use when the user asks about time or how long until an upcoming event.",
+    parameters: { type: "OBJECT", properties: {} },
+  },
+];
 
 // CORS allowlist — add the production Vercel alias here once known.
 const ALLOWED_ORIGINS = new Set([
@@ -136,6 +172,10 @@ async function handleGeminiProxy(request, env) {
       systemInstruction: {
         parts: [{ text: SYSTEM_INSTRUCTION }],
       },
+      tools: [
+        { functionDeclarations: TOOL_DECLARATIONS },
+        { googleSearch: {} },
+      ],
     },
   };
   upstream.send(JSON.stringify(setupMessage));

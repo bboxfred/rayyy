@@ -138,6 +138,32 @@ button.big.primary.live {
   }
 }
 
+.viewfinder-card {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.viewfinder-card.hidden {
+  display: none;
+}
+
+#viewfinder {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  border-radius: 10px;
+  display: block;
+  /* When camera is active a soft warm ring confirms Rayyy is "looking". */
+  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.45);
+}
+
+#viewfinder-caption {
+  margin: 2px 4px 0;
+}
+
 #audio-out {
   width: 0;
   height: 0;

@@ -25,6 +25,15 @@
         </p>
       </section>
 
+      <!-- Viewfinder. Hidden until Rayyy fires enable_camera.
+           The actual <video> element is created off-DOM in JS; this canvas
+           is painted from it via requestAnimationFrame. Keeping <video>
+           out of the DOM reduces (does not eliminate) iOS audio interference. -->
+      <section id="viewfinder-card" class="card viewfinder-card hidden">
+        <canvas id="viewfinder" width="640" height="480"></canvas>
+        <p id="viewfinder-caption" class="hint">Looking…</p>
+      </section>
+
       <section class="controls">
         <button id="start-btn" class="big">Tap to start</button>
         <button id="talk-btn" class="big primary" disabled>Talk</button>

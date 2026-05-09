@@ -27,6 +27,9 @@ const talkBtn = document.getElementById("talk-btn");
 const statusEl = document.getElementById("status");
 const voiceTag = document.getElementById("voice-tag");
 const audioOut = document.getElementById("audio-out");
+const viewfinderCard = document.getElementById("viewfinder-card");
+const viewfinderCanvas = document.getElementById("viewfinder");
+const viewfinderCaption = document.getElementById("viewfinder-caption");
 
 // ---------- state ----------
 let micStream = null;
@@ -38,6 +41,17 @@ let micSource = null;
 let ws = null;
 let isTalking = false;
 let nextStartTime = 0;
+
+// camera state
+let camStream = null;
+let camVideo = null; // off-DOM <video>, painted to canvas via rAF
+let camRafId = 0;
+let camFrameTimer = 0; // setInterval id for periodic 1fps frame send
+let camAutoOffTimer = 0; // 15s backstop
+let camActive = false;
+const CAM_AUTO_OFF_MS = 15000;
+const CAM_FRAME_INTERVAL_MS = 1000; // 1 fps to Gemini while looking
+const CAM_AUTOFOCUS_PAUSE_MS = 800;
 
 // ---------- helpers ----------
 function inferRelayBase() {
@@ -208,6 +222,172 @@ function floatToPcm16(input) {
   return out;
 }
 
+// ---------- camera (voice-activated) ----------
+// The off-DOM <video> + visible <canvas> pattern is deliberate:
+// an in-DOM <video> element interferes with iOS audio routing even when muted.
+// Painting the video to a canvas via rAF reduces (does not eliminate) that.
+async function startCamera() {
+  if (camActive) return;
+  camStream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: "environment" }, width: { ideal: 640 } },
+    audio: false,
+  });
+
+  camVideo = document.createElement("video");
+  camVideo.muted = true;
+  camVideo.playsInline = true;
+  camVideo.autoplay = true;
+  camVideo.srcObject = camStream;
+  // Deliberately NOT appended to the DOM.
+  await camVideo.play().catch(() => {});
+
+  // Wait for video to actually have dimensions.
+  await waitFor(() => camVideo.videoWidth > 0 && camVideo.videoHeight > 0, 3000);
+
+  viewfinderCard.classList.remove("hidden");
+  viewfinderCaption.textContent = "Rayyy is looking…";
+
+  // Paint loop.
+  const ctx = viewfinderCanvas.getContext("2d");
+  const draw = () => {
+    if (!camActive || !camVideo) return;
+    try {
+      ctx.drawImage(camVideo, 0, 0, viewfinderCanvas.width, viewfinderCanvas.height);
+    } catch (_) {}
+    camRafId = requestAnimationFrame(draw);
+  };
+  camActive = true;
+  camRafId = requestAnimationFrame(draw);
+
+  // Periodic 1fps frame send to Gemini.
+  camFrameTimer = setInterval(() => sendCameraFrame(), CAM_FRAME_INTERVAL_MS);
+
+  // 15s backstop. Reset on each frame send via resetAutoOff().
+  resetAutoOff();
+}
+
+function stopCamera() {
+  if (!camActive) return;
+  camActive = false;
+  if (camRafId) cancelAnimationFrame(camRafId);
+  if (camFrameTimer) clearInterval(camFrameTimer);
+  if (camAutoOffTimer) clearTimeout(camAutoOffTimer);
+  camRafId = 0;
+  camFrameTimer = 0;
+  camAutoOffTimer = 0;
+  if (camStream) {
+    for (const track of camStream.getTracks()) {
+      try {
+        track.stop();
+      } catch (_) {}
+    }
+  }
+  camStream = null;
+  camVideo = null;
+  viewfinderCard.classList.add("hidden");
+}
+
+function resetAutoOff() {
+  if (camAutoOffTimer) clearTimeout(camAutoOffTimer);
+  camAutoOffTimer = setTimeout(() => {
+    if (camActive) stopCamera();
+  }, CAM_AUTO_OFF_MS);
+}
+
+// Capture a JPEG from the canvas and send to Gemini Live.
+function sendCameraFrame() {
+  if (!camActive || !isOpen()) return;
+  let dataUrl;
+  try {
+    dataUrl = viewfinderCanvas.toDataURL("image/jpeg", 0.7);
+  } catch (_) {
+    return;
+  }
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) return;
+  const base64 = dataUrl.slice(comma + 1);
+  ws.send(
+    JSON.stringify({
+      realtimeInput: {
+        mediaChunks: [{ mimeType: "image/jpeg", data: base64 }],
+      },
+    })
+  );
+  resetAutoOff();
+}
+
+function waitFor(predicate, timeoutMs) {
+  return new Promise((resolve) => {
+    const start = performance.now();
+    (function tick() {
+      if (predicate()) return resolve(true);
+      if (performance.now() - start > timeoutMs) return resolve(false);
+      setTimeout(tick, 50);
+    })();
+  });
+}
+
+// ---------- tool dispatch ----------
+// Gemini Live sends:  { toolCall: { functionCalls: [{ name, args, id }] } }
+// We respond with:    { toolResponse: { functionResponses: [{ id, name, response: { result: ... } }] } }
+//
+// The critical contract for enable_camera: AWAIT the first real frame send
+// before returning. Otherwise the model generates a vision answer before it
+// has seen anything, and you get hallucinations on the first turn.
+async function handleToolCall(toolCall) {
+  const calls = toolCall?.functionCalls || [];
+  for (const call of calls) {
+    let result;
+    try {
+      result = await dispatchTool(call.name, call.args || {});
+    } catch (err) {
+      result = { ok: false, error: String(err && err.message) || "tool error" };
+    }
+    if (!isOpen()) return;
+    ws.send(
+      JSON.stringify({
+        toolResponse: {
+          functionResponses: [
+            { id: call.id, name: call.name, response: { result } },
+          ],
+        },
+      })
+    );
+  }
+}
+
+async function dispatchTool(name, _args) {
+  switch (name) {
+    case "enable_camera": {
+      if (!camActive) {
+        await startCamera();
+      }
+      // Autofocus / aim-time pause so the first frame isn't garbage.
+      await new Promise((r) => setTimeout(r, CAM_AUTOFOCUS_PAUSE_MS));
+      // Force one frame NOW and only resolve once it's been shipped.
+      sendCameraFrame();
+      return { ok: true };
+    }
+    case "disable_camera": {
+      stopCamera();
+      return { ok: true };
+    }
+    case "get_current_time": {
+      const fmt = new Intl.DateTimeFormat("en-SG", {
+        timeZone: "Asia/Singapore",
+        hour: "numeric",
+        minute: "2-digit",
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      });
+      return { ok: true, time: fmt.format(new Date()), iso: new Date().toISOString() };
+    }
+    default:
+      return { ok: false, error: "tool_not_implemented" };
+  }
+}
+
 // ---------- base64 ----------
 function bytesToBase64(bytes) {
   let bin = "";
@@ -259,6 +439,7 @@ function openSession() {
     talkBtn.textContent = "Talk";
     isTalking = false;
     stopMicCapture();
+    stopCamera();
     if (event.code !== 1000) {
       setStatus(`Closed (${event.code}) ${event.reason || ""}`.trim());
     } else {
@@ -286,6 +467,11 @@ function handleServerMessage(data) {
 
   if (msg.setupComplete) {
     setStatus("Connected. Say hello.");
+    return;
+  }
+
+  if (msg.toolCall) {
+    handleToolCall(msg.toolCall);
     return;
   }
 
