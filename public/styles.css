@@ -300,8 +300,21 @@ body.intro-passed .screen-intro-only { display: none; }
   font-size: 32px;
   line-height: 1;
 }
+.talk-braille {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 28px;
+  letter-spacing: 6px;
+  line-height: 1;
+  /* The Talk button has a black foreground (#0a0a0a on warm orange);
+     keep the braille at the same color, slightly heavier weight. */
+  color: #0a0a0a;
+  font-weight: 500;
+  user-select: none;
+}
 .talk-label {
-  font-size: 18px;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 @keyframes pulse {
