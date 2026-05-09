@@ -285,10 +285,16 @@
     <div class="max-w-[1400px] mx-auto px-6 py-6">
       <!-- Header -->
       <header class="flex items-center justify-between gap-4 pb-5 border-b border-[var(--edge)]">
-        <div class="flex items-center gap-3">
-          <h1 class="display text-3xl font-semibold tracking-tight">rayyy</h1>
-          <span class="text-[var(--ink-muted)] text-sm">·</span>
-          <p id="greeting" class="text-[var(--ink-muted)] text-sm"></p>
+        <div class="flex items-center gap-4">
+          <!-- Braille R-A-Y-Y-Y as the logo. The product is for a blind user;
+               the wordmark itself reads in braille. -->
+          <h1
+            class="braille text-4xl md:text-5xl font-medium leading-none"
+            style="color: var(--ink); letter-spacing: 8px;"
+            aria-label="rayyy"
+          >⠗ ⠁ ⠽ ⠽ ⠽</h1>
+          <span class="text-[var(--ink-muted)] text-sm hidden sm:inline">·</span>
+          <p id="greeting" class="text-[var(--ink-muted)] text-sm hidden sm:block"></p>
         </div>
         <div class="flex items-center gap-3">
           <span id="clock" class="mono text-sm text-[var(--ink-muted)] tabular-nums"></span>
@@ -504,7 +510,6 @@
 
       <!-- Footer -->
       <footer class="mt-8 pb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-[var(--ink-muted)]">
-        <div class="braille text-base">⠗ ⠁ ⠽ ⠽ ⠽</div>
         <div class="italic">Connected, not watched.</div>
         <div class="mono">last sync · <span id="last-sync">—</span></div>
       </footer>
